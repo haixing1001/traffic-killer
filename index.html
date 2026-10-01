@@ -10,7 +10,7 @@
     <meta http-equiv="Cache-Control" content="no-store" />
     <link rel="stylesheet" href="res/dashlite.css">
     <link rel="stylesheet" href="res/style.css">
-	<link rel="shortcut icon" href="../images/favicon.ico">
+	<link rel="shortcut icon" href="images/favicon.ico">
     <link rel="stylesheet" href="res/layer.css" id="layuicss-layer">
     <script src="https://fastly.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 </head>
@@ -160,6 +160,10 @@
     </div>
     <!-- wrap @e -->
 
+    <audio controls id="music" loop style="display:none">
+        <source src="res/background.mp3" type="audio/mpeg">
+    </audio>
+
     <script>
         // 禁用双击放大(防止按加减按钮误触)
         var lastTouchEnd = 0
@@ -191,21 +195,30 @@
 
 
         function musiccontrol(botton) {
+            var music = document.getElementById("music")
+            if (!music) return
             if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
-                if (document.getElementById("customSwitch2").checked) document.getElementById("music").play()
-                else document.getElementById("music").pause()
+                if (document.getElementById("customSwitch2").checked) {
+                    var p = music.play()
+                    if (p && p.catch) p.catch(function() {})
+                } else {
+                    music.pause()
+                }
             }
         }
 
-        document.getElementById("music").addEventListener("pause", function() {
-            document.title = '流量杀手'
-            if (run && !visibl) botton_clicked()
-            document.getElementById("customSwitch2").checked = false
-        })
-        document.getElementById("music").addEventListener("play", function() {
-            if (!(run || visibl)) botton_clicked()
-            document.getElementById("customSwitch2").checked = true
-        })
+        var musicEl = document.getElementById("music")
+        if (musicEl) {
+            musicEl.addEventListener("pause", function() {
+                document.title = '流量杀手'
+                if (run && !visibl) botton_clicked()
+                document.getElementById("customSwitch2").checked = false
+            })
+            musicEl.addEventListener("play", function() {
+                if (!(run || visibl)) botton_clicked()
+                document.getElementById("customSwitch2").checked = true
+            })
+        }
 
         function setCookie(cname, cvalue, exdays) {
             var d = new Date();
