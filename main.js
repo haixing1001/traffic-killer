@@ -11,9 +11,6 @@ var lsat_all_down = 0
 var refresh_lay = 5000
 
 
-var now_speed = 0
-var now_local_ping = 0
-var now_global_ping = 0
 // 兼容模式：链接存在跨域限制、无法用 CORS 读取字节时启用。
 // 此时流量照常传输，但无法统计精确字节数，只能计数完成请求数
 var blindMode = false
@@ -74,7 +71,6 @@ async function cale() {
         return
     }
     var all_down_a = sum(thread_down)
-    now_speed = (all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000 / 1024 / 1024;
     if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
     if (visibl) document.getElementById("mbps").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 8000, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
     if (!visibl) document.title = show((all_down_sum + all_down_a), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 0, 2, 2, 2]) + ' ' + show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 0, 2, 2, 2]);
@@ -85,7 +81,6 @@ async function cale() {
         var avg_speed = 1000 * (all_down_a) / (new Date().getTime() - start_time)
 
         document.title = '流量杀手'
-        now_speed = 0
         document.getElementById("speed").innerText = show((avg_speed), ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
         document.getElementById("mbps").innerText = show((avg_speed) * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
         lsat_all_down = 0
@@ -262,7 +257,6 @@ function laycn() {
         fetch("https://connectivitycheck.platform.hicloud.com/generate_204", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
             .then(function() {
                 var lay = new Date().getTime() - start_ti;
-                now_local_ping = lay
                 document.getElementById("laycn").innerText = lay + 'ms';
             })
             .catch(error => document.getElementById("laycn").innerText = '-ms');
@@ -276,7 +270,6 @@ function laygb() {
         fetch("https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
             .then(function() {
                 var lay = new Date().getTime() - start_ti;
-                now_global_ping = lay
                 document.getElementById("laygb").innerText = lay + 'ms';
             })
             .catch(error => document.getElementById("laygb").innerText = '-ms');
@@ -327,97 +320,3 @@ document.addEventListener("visibilitychange", function() {
         document.title = "流量杀手"
     }
 });
-
-
-
-
-var chartDom = document.getElementById('dv');
-var myChart = null;
-if (typeof echarts !== 'undefined' && chartDom) {
-    myChart = echarts.init(chartDom);
-} else {
-    console.warn('ECharts 加载失败，图表功能不可用');
-    if (chartDom) chartDom.innerText = '图表组件加载失败，请检查网络后刷新重试';
-}
-var option;
-
-option = {
-    tooltip: {
-        trigger: 'axis',
-        axisPointer: {
-            type: 'cross',
-            label: {
-                backgroundColor: '#6a7985'
-            }
-        }
-    },
-    legend: {
-        data: ['速率', '延迟']
-    },
-    toolbox: {
-        feature: {
-            saveAsImage: {}
-        }
-    },
-    grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true
-    },
-    xAxis: [{
-        type: 'time',
-        name: "时间",
-        boundaryGap: false,
-    }],
-    yAxis: [{
-            type: 'value',
-            name: "延迟(ms)",
-            splitLine: {
-                show: false
-            }
-        },
-        {
-            type: 'value',
-            name: "速率(MB/s)",
-            splitLine: {
-                show: false
-            }
-        }
-    ],
-    series: [{
-            name: '速率',
-            type: 'line',
-            stack: 'Total',
-            yAxisIndex: 1,
-            areaStyle: {},
-            emphasis: {
-                focus: 'series'
-            },
-            data: []
-        },
-        {
-            name: '延迟',
-            type: 'line',
-            data: []
-        }
-    ]
-};
-
-if (myChart) myChart.setOption(option);
-
-function dv() {
-    if (visibl && myChart) {
-        var now = new Date()
-        option.series[0].data.push([now.getTime(), parseFloat(now_speed.toFixed(1))])
-        option.series[1].data.push([now.getTime(), now_local_ping])
-        if (option.series[0].data.length > 600) option.series[0].data.shift()
-        if (option.series[1].data.length > 600) option.series[1].data.shift()
-        myChart.setOption({
-            series: option.series
-        });
-    }
-    setTimeout(dv, 1000)
-}
-
-dv()
