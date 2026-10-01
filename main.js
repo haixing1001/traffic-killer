@@ -148,7 +148,8 @@ async function probe_file_size(url) {
             });
             clearTimeout(timer);
             var len = res.headers.get('content-length');
-            try { if (res.body) res.body.cancel(); } catch (e) {}
+            // 只读响应头，立即取消正文下载；cancel() 的拒绝需要吞掉，否则变成未捕获异常
+            try { if (res.body) { res.body.cancel().catch(function () {}); } } catch (e) {}
             if (res.ok && len) {
                 var n = parseInt(len, 10)
                 if (!isNaN(n) && n > 0) return n
@@ -381,7 +382,7 @@ document.addEventListener("visibilitychange", function() {
     var string = document.visibilityState
     if (string === 'hidden') {
         visibl = false
-        if (run && !document.getElementById("customSwitch2").checked) botton_clicked();
+        if (run) botton_clicked();
     }
     if (string === 'visible') {
         visibl = true
