@@ -1,2213 +1,360 @@
-/*
- * traffic-killer
- * CORS + browser-native cross-origin image fallback.
- * Replace the original main.js with this file.
- */
-
-var maxtheard = 0;
-var testurl = '';
-var lsat_date = 0;
-
-var CountryCode_Zh_cn = {
-    US: '美国',
-    CA: '加拿大',
-    HK: '香港(中国)',
-    TW: '台湾(中国)',
-    SG: '新加坡',
-    JP: '日本',
-    KR: '韩国',
-    AU: '澳大利亚',
-    NZ: '新西兰',
-    CN: '中国',
-    GB: '英国',
-    DE: '德国',
-    FR: '法国',
-    NL: '荷兰',
-    IT: '意大利',
-    ES: '西班牙',
-    RU: '俄罗斯',
-    IN: '印度',
-    ID: '印度尼西亚',
-    MY: '马来西亚',
-    TH: '泰国',
-    VN: '越南',
-    PH: '菲律宾',
-    BR: '巴西',
-    AR: '阿根廷',
-    MX: '墨西哥',
-    TR: '土耳其',
-    AE: '阿联酋',
-    IL: '以色列',
-    ZA: '南非',
-    SE: '瑞典',
-    CH: '瑞士',
-    PL: '波兰'
-};
-
-var all_down_sum = 0;
-var run = false;
-var checkIP = true;
-var visibl = true;
-var thread_down = [];
-var lsat_all_down = 0;
-var refresh_lay = 5000;
-
-var now_speed = 0;
-var now_local_ping = 0;
-var now_global_ping = 0;
-
-/*
- * 下载模式：
- *
- * cors：
- *   使用 fetch + ReadableStream
- *   可以精确统计实际读取到的字节数
- *
- * browser：
- *   使用浏览器原生 Image 加载
- *   不需要目标服务器提供 CORS
- *   适合 cloud.139.com 等图片资源
- *
- * 注意：
- *   browser 模式下如果目标服务器没有 Timing-Allow-Origin，
- *   浏览器不会向 JS 暴露 transferSize，因此不能伪造真实速度。
- */
-var download_mode = 'cors';
-
-var run_generation = 0;
-
-var thread_readers = [];
-var thread_controllers = [];
-
-var browser_resources = [];
-
-var browser_measured_bytes = 0;
-var browser_unmeasured = false;
-var browser_completed = 0;
-var browser_failures = 0;
-
-var start_time = 0;
+var maxtheard
+var testurl
+var lsat_date = 0
+var CountryCode_Zh_cn = { "US": "\u7f8e\u56fd", "CA": "\u52a0\u62ff\u5927", "HK": "\u9999\u6e2f(\u4e2d\u56fd)", "TW": "\u53f0\u6e7e(\u4e2d\u56fd)", "SG": "\u65b0\u52a0\u5761", "JP": "\u65e5\u672c", "KR": "\u97e9\u56fd", "AU": "\u6fb3\u5927\u5229\u4e9a", "NZ": "\u65b0\u897f\u5170", "AF": "\u963f\u5bcc\u6c57", "AL": "\u963f\u5c14\u5df4\u5c3c\u4e9a", "DZ": "\u963f\u5c14\u53ca\u5229\u4e9a", "AS": "\u7f8e\u5c5e\u8428\u6469\u4e9a(\u7f8e\u56fd)", "AD": "\u5b89\u9053\u5c14", "AO": "\u5b89\u54e5\u62c9", "AI": "\u5b89\u572d\u62c9", "AG": "\u5b89\u63d0\u74dc\u548c\u5df4\u5e03\u8fbe", "AR": "\u963f\u6839\u5ef7", "AM": "\u4e9a\u7f8e\u5c3c\u4e9a", "AW": "\u963f\u9c81\u5df4", "AT": "\u5965\u5730\u5229", "AZ": "\u963f\u585e\u62dc\u7586", "BS": "\u5df4\u54c8\u9a6c", "BH": "\u5df4\u6797", "BD": "\u5b5f\u52a0\u62c9\u56fd", "BB": "\u5df4\u5df4\u591a\u65af", "BY": "\u767d\u4fc4\u7f57\u65af", "BE": "\u6bd4\u5229\u65f6", "BZ": "\u4f2f\u5229\u5179", "BJ": "\u8d1d\u5b81", "BM": "\u767e\u6155\u5927", "BT": "\u4e0d\u4e39", "BO": "\u73bb\u5229\u7ef4\u4e9a", "BA": "\u6ce2\u9ed1", "BW": "\u535a\u8328\u74e6\u7eb3", "BR": "\u5df4\u897f", "VG": "\u82f1\u5c5e\u7ef4\u4eac\u7fa4\u5c9b(\u82f1\u56fd)", "BN": "\u6587\u83b1", "BG": "\u4fdd\u52a0\u5229\u4e9a", "BF": "\u5e03\u57fa\u7eb3\u6cd5\u7d22", "BI": "\u5e03\u9686\u8fea", "KH": "\u67ec\u57d4\u5be8", "CM": "\u5580\u9ea6\u9686", "CV": "\u4f5b\u5f97\u89d2", "KY": "\u5f00\u66fc\u7fa4\u5c9b(\u82f1\u56fd)", "CF": "\u4e2d\u975e\u5171\u548c\u56fd", "TD": "\u4e4d\u5f97", "CL": "\u667a\u5229", "CO": "\u54e5\u4f26\u6bd4\u4e9a", "KM": "\u79d1\u6469\u7f57", "CD": "\u521a\u679c(\u91d1)", "CK": "\u5e93\u514b\u7fa4\u5c9b(\u65b0\u897f\u5170)", "CR": "\u54e5\u65af\u8fbe\u9ece\u52a0", "CI": "\u79d1\u7279\u8fea\u74e6", "HR": "\u514b\u7f57\u5730\u4e9a", "CU": "\u53e4\u5df4", "CY": "\u585e\u6d66\u8def\u65af", "CZ": "\u6377\u514b", "DK": "\u4e39\u9ea6", "DJ": "\u5409\u5e03\u63d0", "DM": "\u591a\u7c73\u5c3c\u514b", "DO": "\u591a\u7c73\u5c3c\u52a0\u5171\u548c\u56fd", "EC": "\u5384\u74dc\u591a\u5c14", "EG": "\u57c3\u53ca", "SV": "\u8428\u5c14\u74e6\u591a", "GQ": "\u8d64\u9053\u51e0\u5185\u4e9a", "ER": "\u5384\u7acb\u7279\u91cc\u4e9a", "EE": "\u7231\u6c99\u5c3c\u4e9a", "ET": "\u57c3\u585e\u4fc4\u6bd4\u4e9a", "FO": "\u6cd5\u7f57\u7fa4\u5c9b(\u4e39\u9ea6)", "FJ": "\u6590\u6d4e", "FI": "\u82ac\u5170", "FR": "\u6cd5\u56fd", "GF": "\u6cd5\u5c5e\u572d\u4e9a\u90a3(\u6cd5\u56fd)", "PF": "\u6cd5\u5c5e\u73bb\u5229\u5c3c\u897f\u4e9a", "GA": "\u52a0\u84ec", "GM": "\u5188\u6bd4\u4e9a", "GE": "\u683c\u9c81\u5409\u4e9a", "DE": "\u5fb7\u56fd", "GH": "\u52a0\u7eb3", "GI": "\u76f4\u5e03\u7f57\u9640(\u82f1\u56fd)", "GR": "\u5e0c\u814a", "GL": "\u683c\u9675\u5170", "GD": "\u683c\u6797\u7eb3\u8fbe", "GP": "\u74dc\u5fb7\u7f57\u666e", "GU": "\u5173\u5c9b(\u7f8e\u56fd)", "GT": "\u5371\u5730\u9a6c\u62c9", "GN": "\u51e0\u5185\u4e9a", "GW": "\u51e0\u5185\u4e9a\u6bd4\u7ecd", "GY": "\u572d\u4e9a\u90a3", "HT": "\u6d77\u5730", "HN": "\u6d2a\u90fd\u62c9\u65af", "HU": "\u5308\u7259\u5229", "IS": "\u51b0\u5c9b", "IN": "\u5370\u5ea6", "ID": "\u5370\u5ea6\u5c3c\u897f\u4e9a", "IR": "\u4f0a\u6717", "IQ": "\u4f0a\u62c9\u514b", "IE": "\u7231\u5c14\u5170\u5171\u548c\u56fd", "IL": "\u4ee5\u8272\u5217", "IT": "\u610f\u5927\u5229", "JM": "\u7259\u4e70\u52a0", "JO": "\u7ea6\u65e6", "KZ": "\u54c8\u8428\u514b\u65af\u5766", "KE": "\u80af\u5c3c\u4e9a", "KI": "\u57fa\u91cc\u5df4\u65af", "KP": "\u5317\u671d\u9c9c", "KW": "\u79d1\u5a01\u7279", "KG": "\u5409\u5c14\u5409\u65af\u65af\u5766", "LA": "\u8001\u631d", "LV": "\u62c9\u8131\u7ef4\u4e9a", "LB": "\u9ece\u5df4\u5ae9", "LS": "\u83b1\u7d22\u6258", "LR": "\u5229\u6bd4\u91cc\u4e9a", "LY": "\u5229\u6bd4\u4e9a", "LI": "\u5217\u652f\u6566\u58eb\u767b", "LT": "\u7acb\u9676\u5b9b", "LU": "\u5362\u68ee\u5821", "MO": "\u6fb3\u95e8(\u4e2d\u56fd)", "MK": "\u9a6c\u5176\u987f", "MG": "\u9a6c\u8fbe\u52a0\u65af\u52a0", "MW": "\u9a6c\u62c9\u7ef4", "MY": "\u9a6c\u6765\u897f\u4e9a", "MV": "\u9a6c\u5c14\u4ee3\u592b", "ML": "\u9a6c\u91cc\u5171\u548c\u56fd", "MT": "\u9a6c\u8033\u4ed6", "MH": "\u9a6c\u7ecd\u5c14\u7fa4\u5c9b", "MQ": "\u9a6c\u63d0\u5c3c\u514b(\u6cd5\u56fd)", "MR": "\u6bdb\u91cc\u5854\u5c3c\u4e9a", "MU": "\u6bdb\u91cc\u6c42\u65af", "YT": "\u9a6c\u7ea6\u7279", "MX": "\u58a8\u897f\u54e5", "FM": "\u5bc6\u514b\u7f57\u5c3c\u897f\u4e9a\u8054\u90a6", "MD": "\u6469\u5c14\u591a\u74e6", "MC": "\u6469\u7eb3\u54e5", "MN": "\u8499\u53e4\u56fd", "ME": "\u9ed1\u5c71\u5171\u548c\u56fd", "MS": "\u8499\u585e\u62c9\u7279\u5c9b(\u82f1\u56fd)", "MA": "\u6469\u6d1b\u54e5", "MZ": "\u83ab\u6851\u6bd4\u514b", "MM": "\u7f05\u7538", "NA": "\u7eb3\u7c73\u6bd4\u4e9a", "NR": "\u7459\u9c81", "NP": "\u5c3c\u6cca\u5c14", "599": "\u8377\u5c5e\u5b89\u7684\u5217\u65af", "NL": "\u8377\u5170", "NC": "\u65b0\u5580\u91cc\u591a\u5c3c\u4e9a(\u6cd5\u56fd)", "NI": "\u5c3c\u52a0\u62c9\u74dc", "NE": "\u5c3c\u65e5\u5c14", "NG": "\u5c3c\u65e5\u5229\u4e9a", "NU": "\u7ebd\u57c3", "MP": "\u5317\u9a6c\u91cc\u4e9a\u7eb3\u7fa4\u5c9b(\u7f8e\u56fd)", "NO": "\u632a\u5a01", "OM": "\u963f\u66fc", "PK": "\u5df4\u57fa\u65af\u5766", "PW": "\u5e15\u52b3", "PS": "\u5df4\u52d2\u65af\u5766", "PA": "\u5df4\u62ff\u9a6c", "PG": "\u5df4\u5e03\u4e9a\u65b0\u51e0\u5185\u4e9a", "PY": "\u5df4\u62c9\u572d", "CN": "\u4e2d\u56fd", "PE": "\u79d8\u9c81", "PH": "\u83f2\u5f8b\u5bbe", "PL": "\u6ce2\u5170", "PT": "\u8461\u8404\u7259", "PR": "\u6ce2\u591a\u9ece\u5404(\u7f8e\u56fd)", "QA": "\u5361\u5854\u5c14", "CG": "\u521a\u679c\u5171\u548c\u56fd", "ZW": "\u6d25\u5df4\u5e03\u97e6", "RE": "\u7559\u5c3c\u6c6a(\u6cd5\u56fd)", "RO": "\u7f57\u9a6c\u5c3c\u4e9a", "RU": "\u4fc4\u7f57\u65af", "RW": "\u5362\u65fa\u8fbe", "SH": "\u5723\u8d6b\u52d2\u62ff", "KN": "\u5723\u57fa\u8328\u548c\u5c3c\u7ef4\u65af", "LC": "\u5723\u5362\u897f\u4e9a", "PM": "\u5723\u76ae\u57c3\u5c14\u548c\u5bc6\u514b\u9686\u5c9b(\u6cd5\u56fd)", "VC": "\u5723\u6587\u68ee\u7279\u548c\u683c\u6797\u7eb3\u4e01\u65af", "WS": "\u8428\u6469\u4e9a", "SM": "\u5723\u9a6c\u529b\u8bfa", "ST": "\u5723\u591a\u7f8e\u548c\u666e\u6797\u897f\u6bd4", "SA": "\u6c99\u7279\u963f\u62c9\u4f2f", "SN": "\u585e\u5185\u52a0\u5c14", "RS": "\u585e\u5c14\u7ef4\u4e9a\u5171\u548c\u56fd", "SC": "\u585e\u820c\u5c14", "SL": "\u585e\u62c9\u5229\u6602", "SK": "\u65af\u6d1b\u4f10\u514b", "SI": "\u65af\u6d1b\u6587\u5c3c\u4e9a", "SB": "\u6240\u7f57\u95e8\u7fa4\u5c9b", "SO": "\u7d22\u9a6c\u91cc", "ZA": "\u5357\u975e", "SS": "\u5357\u82cf\u4e39", "ES": "\u897f\u73ed\u7259", "LK": "\u65af\u91cc\u5170\u5361", "SD": "\u82cf\u4e39", "SR": "\u82cf\u91cc\u5357", "SZ": "\u65af\u5a01\u58eb\u5170", "SE": "\u745e\u5178", "CH": "\u745e\u58eb", "SY": "\u53d9\u5229\u4e9a", "TJ": "\u5854\u5409\u514b\u65af\u5766", "TZ": "\u5766\u6851\u5c3c\u4e9a", "TH": "\u6cf0\u56fd", "TL": "\u4e1c\u5e1d\u6c76", "TG": "\u591a\u54e5", "TK": "\u6258\u514b\u52b3", "TO": "\u6c64\u52a0", "TT": "\u7279\u7acb\u5c3c\u8fbe\u548c\u591a\u5df4\u54e5", "TN": "\u7a81\u5c3c\u65af", "TR": "\u571f\u8033\u5176", "TM": "\u571f\u5e93\u66fc\u65af\u5766", "TC": "\u7279\u514b\u65af\u548c\u51ef\u79d1\u65af\u7fa4\u5c9b(\u82f1\u56fd)", "TV": "\u56fe\u74e6\u5362", "UG": "\u4e4c\u5e72\u8fbe", "UA": "\u4e4c\u514b\u5170", "AE": "\u963f\u62c9\u4f2f\u8054\u5408\u914b\u957f\u56fd", "GB": "\u82f1\u56fd", "UY": "\u4e4c\u62c9\u572d", "UZ": "\u4e4c\u5179\u522b\u514b\u65af\u5766", "VU": "\u74e6\u52aa\u963f\u56fe", "VE": "\u59d4\u5185\u745e\u62c9", "VN": "\u8d8a\u5357", "WF": "\u74e6\u5229\u65af\u548c\u5bcc\u56fe\u7eb3\u7fa4\u5c9b(\u6cd5\u56fd)", "YE": "\u4e5f\u95e8", "ZM": "\u8d5e\u6bd4\u4e9a" }
+var all_down_sum = 0
+var run = false
+var checkIP = true
+var visibl = true
+var thread_down = []
+var lsat_all_down = 0
+var refresh_lay = 5000
 
 
-/*
- * 给 URL 增加缓存随机参数。
- *
- * 例如：
- *
- * https://example.com/a.png
- *
- * 变成：
- *
- * https://example.com/a.png?_tk=xxx
- *
- * 如果 URL 已经存在 ?：
- *
- * https://example.com/a.png?a=1&_tk=xxx
- *
- * 主要用于避免浏览器 / CDN 直接命中本地缓存。
- */
-function cacheBustUrl(url, index) {
-    var separator = url.indexOf('?') >= 0 ? '&' : '?';
+var now_speed = 0
+var now_local_ping = 0
+var now_global_ping = 0
+var start_time = 0
+var run_id = 0            // 每次开始 +1,用于让旧的线程/定时器自动失效
+var cale_timer = null
+var total_timer = null
+var abort_controller = null
+var MAX_THREADS = 32
 
-    return url +
-        separator +
-        '_tk=' +
-        Date.now().toString(36) +
-        '_' +
-        index +
-        '_' +
-        Math.random().toString(36).slice(2, 9);
+function sleep(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms) })
 }
 
-
-/*
- * 更新页面描述文字。
- */
-function setDescribe(text) {
-    var el = document.getElementById('describe');
-
-    if (el) {
-        el.innerText = text;
-    }
-}
-
-
-/*
- * 清理一个浏览器 Image 资源。
- */
-function clearBrowserResource(resource) {
-    if (!resource) {
-        return;
-    }
-
-    try {
-        resource.onload = null;
-        resource.onerror = null;
-        resource.removeAttribute('src');
-    } catch (e) {}
-
-    try {
-        if (resource.parentNode) {
-            resource.parentNode.removeChild(resource);
-        }
-    } catch (e) {}
-}
-
-
-/*
- * 停止所有下载线程 / Image。
- */
-function cleanupWorkers() {
-
-    /*
-     * 清理 fetch reader
-     */
-    for (var i = 0; i < thread_readers.length; i++) {
+// 单个下载线程:循环下载,失败时退避重试,停止/重启后自动退出
+async function start_thread(index, id) {
+    var signal = abort_controller.signal
+    var arr = thread_down
+    var fails = 0
+    while (run && id === run_id) {
+        var got = 0
         try {
-            if (thread_readers[i]) {
-                thread_readers[i].cancel();
-            }
-        } catch (e) {}
-    }
-
-    thread_readers = [];
-
-
-    /*
-     * 中止 fetch
-     */
-    for (var j = 0; j < thread_controllers.length; j++) {
-        try {
-            if (thread_controllers[j]) {
-                thread_controllers[j].abort();
-            }
-        } catch (e) {}
-    }
-
-    thread_controllers = [];
-
-
-    /*
-     * 清理浏览器 Image
-     */
-    for (var k = 0; k < browser_resources.length; k++) {
-        clearBrowserResource(browser_resources[k]);
-    }
-
-    browser_resources = [];
-}
-
-
-/*
- * 尝试读取 Performance Resource Timing 中的 transferSize。
- *
- * 注意：
- * 跨域资源如果没有 Timing-Allow-Origin：
- *
- * transferSize 通常会被浏览器隐藏。
- */
-function getPerformanceTransferSize(url) {
-
-    try {
-
-        var entries = performance.getEntriesByName(url);
-
-        if (!entries || entries.length === 0) {
-            return 0;
-        }
-
-        var total = 0;
-
-        for (var i = 0; i < entries.length; i++) {
-
-            var n = Number(entries[i].transferSize || 0);
-
-            if (n > 0) {
-                total += n;
-            }
-        }
-
-        return total;
-
-    } catch (e) {
-
-        return 0;
-    }
-}
-
-
-/*
- * 判断一个 URL 是否很可能是图片。
- *
- * 主要用于提示用户。
- */
-function isLikelyImageUrl(url) {
-
-    try {
-
-        var u = new URL(url, window.location.href);
-
-        var path = (u.pathname || '').toLowerCase();
-
-        return (
-            /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)(?:$|\/)/i.test(path)
-            ||
-            /image|img|pic|picture|photo|avatar|cover/i.test(path)
-        );
-
-    } catch (e) {
-
-        return /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)(?:$|[?#])/i.test(url);
-    }
-}
-
-
-/*
- * 浏览器原生图片探测。
- *
- * 这个请求不要求 CORS：
- *
- * new Image()
- * img.src = xxx
- *
- * 对 cloud.139.com 这种图片地址特别有用。
- */
-function testBrowserImage(url, timeout) {
-
-    timeout = timeout || 10000;
-
-    return new Promise(function(resolve) {
-
-        var img = new Image();
-
-        var finished = false;
-
-        var timer = null;
-
-        var probeUrl = cacheBustUrl(url, 'probe');
-
-
-        function finish(ok) {
-
-            if (finished) {
-                return;
-            }
-
-            finished = true;
-
-            if (timer) {
-                clearTimeout(timer);
-            }
-
-            img.onload = null;
-            img.onerror = null;
-
-            try {
-                img.removeAttribute('src');
-            } catch (e) {}
-
-            resolve(ok);
-        }
-
-
-        img.referrerPolicy = 'no-referrer';
-
-        img.decoding = 'async';
-
-
-        img.onload = function() {
-            finish(true);
-        };
-
-
-        img.onerror = function() {
-            finish(false);
-        };
-
-
-        timer = setTimeout(function() {
-            finish(false);
-        }, timeout);
-
-
-        img.src = probeUrl;
-    });
-}
-
-
-/*
- * 尝试 CORS 模式。
- *
- * 返回：
- *
- * true  = 可以正常 fetch
- * false = CORS 不可用
- */
-async function tryCors() {
-
-    var controller = new AbortController();
-
-    var timer = setTimeout(function() {
-        controller.abort();
-    }, 8000);
-
-
-    try {
-
-        var response = await fetch(testurl, {
-            cache: 'no-store',
-            mode: 'cors',
-            referrerPolicy: 'no-referrer',
-            signal: controller.signal
-        });
-
-
-        if (
-            !response ||
-            !response.ok ||
-            !response.body
-        ) {
-            throw new Error('CORS response unavailable');
-        }
-
-
-        var reader = response.body.getReader();
-
-        var first = await reader.read();
-
-
-        if (
-            first.done ||
-            !first.value ||
-            first.value.length <= 0
-        ) {
-
-            try {
-                await reader.cancel();
-            } catch (e) {}
-
-            throw new Error('empty response');
-        }
-
-
-        try {
-            await reader.cancel();
-        } catch (e) {}
-
-
-        return true;
-
-    } catch (err) {
-
-        console.warn(
-            '[traffic-killer] CORS check failed:',
-            err
-        );
-
-        return false;
-
-    } finally {
-
-        clearTimeout(timer);
-
-        try {
-            controller.abort();
-        } catch (e) {}
-    }
-}
-
-
-/*
- * CORS 流式下载线程。
- *
- * 原始 traffic-killer 的核心下载方式。
- */
-async function start_thread(index, generation) {
-
-    try {
-
-        if (
-            !run ||
-            generation !== run_generation ||
-            download_mode !== 'cors'
-        ) {
-            return;
-        }
-
-
-        var controller = new AbortController();
-
-        thread_controllers[index] = controller;
-
-
-        var response = await fetch(testurl, {
-            cache: 'no-store',
-            mode: 'cors',
-            referrerPolicy: 'no-referrer',
-            signal: controller.signal
-        });
-
-
-        if (
-            !response ||
-            !response.body
-        ) {
-            throw new Error('response body unavailable');
-        }
-
-
-        var reader = response.body.getReader();
-
-        thread_readers[index] = reader;
-
-
-        while (true) {
-
-            var result = await reader.read();
-
-            var value = result.value;
-
-            var done = result.done;
-
-
-            /*
-             * 下载结束
-             */
-            if (done) {
-
-                try {
-                    reader.releaseLock();
-                } catch (e) {}
-
-                thread_readers[index] = null;
-
-
-                /*
-                 * 自动重新开始
-                 */
-                if (
-                    run &&
-                    generation === run_generation
-                ) {
-
-                    start_thread(
-                        index,
-                        generation
-                    );
+            const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer', signal: signal })
+            if (!response.ok) throw new Error("HTTP " + response.status)
+            const reader = response.body.getReader()
+            while (true) {
+                const { value, done } = await reader.read()
+                if (!run || id !== run_id) {
+                    reader.cancel()
+                    return
                 }
-
-                break;
+                if (done) break
+                got += value.length
+                arr[index] += value.length
             }
-
-
-            /*
-             * 已经停止
-             */
-            if (
-                !run ||
-                generation !== run_generation
-            ) {
-
-                try {
-                    await reader.cancel();
-                } catch (e) {}
-
-                break;
-            }
-
-
-            /*
-             * 累加实际下载字节数
-             */
-            if (
-                value &&
-                value.length
-            ) {
-
-                thread_down[index] += value.length;
-            }
+        } catch (err) {
+            if (!run || id !== run_id) return
+            console.log(err)
         }
-
-
-    } catch (err) {
-
-        if (
-            err &&
-            err.name !== 'AbortError'
-        ) {
-
-            console.log(
-                '[traffic-killer] thread ' +
-                index +
-                ':',
-                err
-            );
-        }
-
-
-        /*
-         * 失败后自动重试
-         */
-        if (
-            run &&
-            generation === run_generation &&
-            download_mode === 'cors'
-        ) {
-
-            setTimeout(function() {
-
-                start_thread(
-                    index,
-                    generation
-                );
-
-            }, 250);
-        }
-    }
-}
-
-
-/*
- * 浏览器原生 Image 下载线程。
- *
- * 重要：
- *
- * 这种模式不使用 fetch。
- *
- * 因此即使目标服务器没有：
- *
- * Access-Control-Allow-Origin: *
- *
- * 浏览器仍然可以加载图片。
- */
-function start_browser_thread(index, generation) {
-
-    if (
-        !run ||
-        generation !== run_generation ||
-        download_mode !== 'browser'
-    ) {
-        return;
-    }
-
-
-    var resource = new Image();
-
-    var requestUrl = cacheBustUrl(
-        testurl,
-        index
-    );
-
-    var finished = false;
-
-    var watchdog = null;
-
-
-    function finish(success) {
-
-        if (finished) {
-            return;
-        }
-
-        finished = true;
-
-
-        if (watchdog) {
-            clearTimeout(watchdog);
-        }
-
-
-        /*
-         * 尝试从 Resource Timing 获取实际传输大小。
-         *
-         * 没有 Timing-Allow-Origin 时通常为 0。
-         */
-        var measured = getPerformanceTransferSize(
-            requestUrl
-        );
-
-
-        if (measured > 0) {
-
-            thread_down[index] += measured;
-
-            browser_measured_bytes += measured;
-
+        if (got > 0) {
+            fails = 0
         } else {
-
-            browser_unmeasured = true;
-        }
-
-
-        if (success) {
-            browser_completed++;
-        } else {
-            browser_failures++;
-        }
-
-
-        browser_resources[index] = null;
-
-        clearBrowserResource(resource);
-
-
-        /*
-         * 自动循环加载。
-         */
-        if (
-            run &&
-            generation === run_generation &&
-            download_mode === 'browser'
-        ) {
-
-            setTimeout(function() {
-
-                start_browser_thread(
-                    index,
-                    generation
-                );
-
-            }, success ? 0 : 350);
+            // 没有拿到任何数据(403/404/断网等):退避,避免无间隔狂刷请求
+            fails++
+            await sleep(Math.min(500 * fails, 5000))
         }
     }
-
-
-    resource.referrerPolicy = 'no-referrer';
-
-    resource.decoding = 'async';
-
-    resource.alt = '';
-
-    resource.width = 1;
-
-    resource.height = 1;
-
-
-    /*
-     * 隐藏 Image。
-     */
-    resource.style.position = 'fixed';
-
-    resource.style.left = '-10000px';
-
-    resource.style.top = '0';
-
-    resource.style.width = '1px';
-
-    resource.style.height = '1px';
-
-    resource.style.opacity = '0';
-
-    resource.style.pointerEvents = 'none';
-
-
-    resource.onload = function() {
-        finish(true);
-    };
-
-
-    resource.onerror = function() {
-        finish(false);
-    };
-
-
-    /*
-     * 防止某些资源一直不触发 onload / onerror。
-     */
-    watchdog = setTimeout(function() {
-        finish(false);
-    }, 30000);
-
-
-    browser_resources[index] = resource;
-
-
-    document.body.appendChild(resource);
-
-
-    resource.src = requestUrl;
 }
 
-
-/*
- * 启动浏览器兼容模式。
- *
- * 目前针对的是图片资源。
- */
-async function startBrowserMode() {
-
-    return await testBrowserImage(
-        testurl,
-        10000
-    );
-}
-
-
-/*
- * 开始下载。
- */
-async function start() {
-
-    /*
-     * 如果已经达到 Maximum，
-     * 下一次开始时重新计算。
-     */
-    if (
-        all_down_sum >= Maximum &&
-        Maximum != 0
-    ) {
-
-        all_down_sum = 0;
-    }
-
-
-    /*
-     * 读取线程数。
-     */
-    maxtheard = parseInt(
-        document.getElementById('thread').value,
-        10
-    ) || 1;
-
-
-    if (maxtheard < 1) {
-        maxtheard = 1;
-    }
-
-
-    /*
-     * 防止输入过高导致手机浏览器直接崩溃。
-     */
-    if (maxtheard > 512) {
-        maxtheard = 512;
-    }
-
-
-    /*
-     * 读取 URL。
-     */
-    testurl = document
-        .getElementById('link')
-        .value
-        .trim();
-
-
-    if (testurl.length < 10) {
-
-        alert('链接不合法');
-
-        return;
-    }
-
-
-    /*
-     * 自动修正 HTTPS / HTTP 大小写。
-     */
-    testurl =
-        testurl.substring(0, 5).toLowerCase() +
-        testurl.substring(5);
-
-
-    if (!checkURL(testurl)) {
-
-        alert('链接不合法');
-
-        return;
-    }
-
-
-    /*
-     * 不允许 HTTP。
-     *
-     * 因为页面一般本身运行在 HTTPS。
-     */
-    if (testurl.startsWith('http://')) {
-
-        alert(
-            '由于浏览器安全限制，不支持http协议，请使用https协议'
-        );
-
-        return;
-    }
-
-
-    if (!testurl.startsWith('https://')) {
-
-        alert('链接不合法');
-
-        return;
-    }
-
-
-    /*
-     * 先清理旧线程。
-     */
-    cleanupWorkers();
-
-
-    browser_completed = 0;
-
-    browser_measured_bytes = 0;
-
-    browser_unmeasured = false;
-
-    browser_failures = 0;
-
-
-    /*
-     * 初始化线程统计。
-     */
-    thread_down = [];
-
-
-    for (
-        var i = 0;
-        i < maxtheard;
-        i++
-    ) {
-
-        thread_down[i] = 0;
-    }
-
-
-    var button =
-        document.getElementById('do');
-
-
-    if (button) {
-
-        button.innerText =
-            '正在检验链接...';
-
-        button.disabled = true;
-    }
-
-
-    /*
-     * 第一阶段：
-     *
-     * 优先尝试 CORS。
-     */
-    download_mode = 'cors';
-
-
-    var corsOk = await tryCors();
-
-
-    /*
-     * CORS 失败：
-     *
-     * 自动尝试浏览器 Image。
-     */
-    if (!corsOk) {
-
-        download_mode = 'browser';
-
-
-        setDescribe(
-            '正在使用浏览器兼容模式'
-        );
-
-
-        var browserOk =
-            await startBrowserMode();
-
-
-        /*
-         * 如果连 Image 都无法加载，
-         * 才真正判定 URL 不可用。
-         */
-        if (!browserOk) {
-
-            download_mode = 'cors';
-
-
-            if (button) {
-
-                button.innerText = '开始';
-
-                button.disabled = false;
-            }
-
-
-            alert(
-                '该链接无法通过跨域读取，也无法作为浏览器图片资源加载。\n\n' +
-                '如果手机浏览器可以直接打开该链接，请确认它是 PNG、JPG、WEBP、GIF、SVG 等可直接嵌入的图片资源。'
-            );
-
-            return;
-        }
-    }
-
-
-    /*
-     * 到这里说明测试地址有效。
-     */
-    setDescribe(
-        download_mode === 'cors'
-            ? '实时速度'
-            : '浏览器兼容模式'
-    );
-
-
-    if (button) {
-
-        button.innerText = '停止';
-
-        button.disabled = false;
-    }
-
-
-    lsat_all_down = 0;
-
-    start_time =
-        new Date().getTime();
-
-    lsat_date =
-        new Date().getTime();
-
-
-    run = true;
-
-    run_generation++;
-
-    var generation =
-        run_generation;
-
-
-    /*
-     * 根据模式启动线程。
-     */
-    if (download_mode === 'cors') {
-
-        for (
-            var n = 0;
-            n < maxtheard;
-            n++
-        ) {
-
-            start_thread(
-                n,
-                generation
-            );
-        }
-
+// 每秒刷新实时速度
+function cale(id) {
+    if (id !== run_id || !run) return
+    var all_down_a = sum(thread_down)
+    var now = new Date().getTime()
+    var dt = now - lsat_date
+    var bps = dt > 0 ? (all_down_a - lsat_all_down) / dt * 1000 : 0
+    now_speed = bps / 1024 / 1024
+    if (visibl) {
+        document.getElementById("speed").innerText = show(bps, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2])
+        document.getElementById("mbps").innerText = show(bps * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2])
     } else {
+        document.title = show(all_down_sum + all_down_a, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 0, 2, 2, 2]) + ' ' + show(bps, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 0, 2, 2, 2])
+    }
+    lsat_all_down = all_down_a
+    lsat_date = now
+    cale_timer = setTimeout(function() { cale(id) }, 1000)
+}
 
-        for (
-            var b = 0;
-            b < maxtheard;
-            b++
-        ) {
+// 刷新累计流量,达到上限自动停止
+function total(id) {
+    if (id !== run_id || !run) return
+    var all_down = sum(thread_down)
+    if (visibl) document.getElementById("total").innerText = show(all_down_sum + all_down, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
+    if (Maximum != 0 && all_down_sum + all_down >= Maximum) {
+        stop()
+        return
+    }
+    total_timer = setTimeout(function() { total(id) }, 50)
+}
 
-            start_browser_thread(
-                b,
-                generation
-            );
+async function start() {
+    if (Maximum != 0 && all_down_sum >= Maximum) {
+        all_down_sum = 0
+    }
+    var threads = parseInt(document.getElementById("thread").value, 10)
+    if (!(threads >= 1)) threads = 1
+    if (threads > MAX_THREADS) threads = MAX_THREADS
+    maxtheard = threads
+    testurl = document.getElementById("link").value.trim()
+    if (testurl.length < 10) {
+        alert("链接不合法")
+        return;
+    }
+    testurl = testurl.substring(0, 5).toLowerCase() + testurl.substring(5, testurl.length);
+    if (!checkURL(testurl)) {
+        alert("链接不合法")
+        return;
+    }
+    if (testurl.startsWith("http://")) {
+        alert("由于浏览器安全限制,不支持http协议,请使用https协议")
+        return;
+    }
+    if (!testurl.startsWith("https://")) {
+        alert("链接不合法")
+        return;
+    }
+    document.getElementById('do').innerText = '正在检验链接...';
+    document.getElementById('do').disabled = true;
+
+    try {
+        const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
+        if (!response.ok) throw new Error("服务器返回 HTTP " + response.status)
+        const reader = response.body.getReader();
+        const { value } = await reader.read();
+        reader.cancel()
+        if (!value || value.length <= 0) throw new Error("资源响应为空(可能有防盗链,或资源已失效)")
+    } catch (err) {
+        console.warn(err)
+        document.getElementById('do').innerText = '开始';
+        document.getElementById('do').disabled = false;
+        if (err && err.name === "TypeError") {
+            alert("该链接无法访问:请求被浏览器拦截。\n如果你能在浏览器中直接打开它,大概率是目标服务器没有开启 CORS(Access-Control-Allow-Origin),请换一个支持跨域的地址。")
+        } else {
+            alert("该链接不可用:" + err.message)
         }
+        return
     }
+    document.getElementById('describe').innerText = '实时速度';
+    document.getElementById('do').innerText = '停止';
+    document.getElementById('do').disabled = false;
 
-
-    /*
-     * 启动速度计算。
-     */
-    cale();
-
-
-    /*
-     * 启动总流量计算。
-     */
-    total();
+    run_id++
+    var id = run_id
+    abort_controller = new AbortController()
+    thread_down = []
+    for (var i = 0; i < threads; i++) thread_down[i] = 0
+    lsat_all_down = 0
+    start_time = new Date().getTime()
+    lsat_date = start_time
+    run = true
+    for (var j = 0; j < threads; j++) start_thread(j, id)
+    cale_timer = setTimeout(function() { cale(id) }, 1000)
+    total(id)
 }
 
-
-/*
- * 停止。
- */
 function stop() {
+    if (!run) return
+    run = false
+    if (abort_controller) abort_controller.abort()
+    clearTimeout(cale_timer)
+    clearTimeout(total_timer)
 
-    run = false;
+    var all_down = sum(thread_down)
+    all_down_sum += all_down
+    var duration = new Date().getTime() - start_time
+    var avg_speed = duration > 0 ? 1000 * all_down / duration : 0
 
-    run_generation++;
-
-
-    cleanupWorkers();
-
-
-    var button =
-        document.getElementById('do');
-
-
-    if (button) {
-
-        button.innerText = '开始';
-
-        button.disabled = false;
-    }
-
-
-    if (
-        download_mode === 'browser' &&
-        browser_unmeasured
-    ) {
-
-        setDescribe(
-            '已停止（浏览器兼容模式）'
-        );
-    }
+    now_speed = 0
+    lsat_all_down = 0
+    document.title = '流量杀手'
+    document.getElementById("total").innerText = show(all_down_sum, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
+    document.getElementById("speed").innerText = show(avg_speed, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2])
+    document.getElementById("mbps").innerText = show(avg_speed * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2])
+    document.getElementById('describe').innerText = '平均速度'
+    document.getElementById('do').innerText = '开始'
 }
 
-
-/*
- * 数组求和。
- */
 function sum(arr) {
-
     var s = 0;
-
-
-    for (
-        var i = 0;
-        i < arr.length;
-        i++
-    ) {
-
-        s += Number(
-            arr[i] || 0
-        );
+    for (var i = 0; i < arr.length; i++) {
+        s += arr[i];
     }
-
-
     return s;
 }
 
-
-/*
- * 开始 / 停止按钮。
- *
- * 注意原项目拼写：
- * botton_clicked
- *
- * 保持不改，避免 index.html 中事件失效。
- */
 function botton_clicked() {
-
     if (run) {
-
         stop();
-
     } else {
-
         start();
     }
 }
 
-
-/*
- * URL 检查。
- */
 function checkURL(URL) {
-
-    try {
-
-        var u = new URL(URL);
-
-
-        return (
-            u.protocol === 'https:' &&
-            !!u.hostname
-        );
-
-    } catch (e) {
-
-        return false;
-    }
+    var Expression = /^https?:\/\/([\w-]+\.)+[\w-]+(:\d+)?(\/\S*)?$/i;
+    return Expression.test(URL);
 }
 
-
-/*
- * 速度计算。
- */
-async function cale() {
-
-    var now =
-        new Date().getTime();
-
-
-    var elapsed =
-        now - lsat_date;
-
-
-    if (elapsed <= 0) {
-
-        elapsed = 1;
-    }
-
-
-    var all_down_a =
-        sum(thread_down);
-
-
-    var delta =
-        all_down_a - lsat_all_down;
-
-
-    /*
-     * 浏览器兼容模式：
-     *
-     * 如果浏览器没有提供 transferSize，
-     * 则不能显示伪造速度。
-     */
-    if (
-        download_mode === 'browser' &&
-        browser_measured_bytes === 0
-    ) {
-
-        now_speed = 0;
-
-
-        if (visibl) {
-
-            document.getElementById(
-                'speed'
-            ).innerText =
-                '浏览器下载';
-
-
-            document.getElementById(
-                'mbps'
-            ).innerText =
-                '无法读取';
-        }
-
-
-    } else {
-
-        /*
-         * MB/s
-         */
-        now_speed =
-            delta /
-            elapsed *
-            1000 /
-            1024 /
-            1024;
-
-
-        if (visibl) {
-
-            document.getElementById(
-                'speed'
-            ).innerText =
-                show(
-                    delta /
-                    elapsed *
-                    1000,
-                    [
-                        'B/s',
-                        'KB/s',
-                        'MB/s',
-                        'GB/s',
-                        'TB/s',
-                        'PB/s'
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-
-
-            document.getElementById(
-                'mbps'
-            ).innerText =
-                show(
-                    delta /
-                    elapsed *
-                    8000,
-                    [
-                        'Bps',
-                        'Kbps',
-                        'Mbps',
-                        'Gbps',
-                        'Tbps',
-                        'Pbps'
-                    ],
-                    [
-                        0,
-                        0,
-                        0,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-
-
-        if (!visibl) {
-
-            document.title =
-                show(
-                    all_down_sum +
-                    all_down_a,
-                    [
-                        'B',
-                        'KB',
-                        'MB',
-                        'GB',
-                        'TB',
-                        'PB'
-                    ],
-                    [
-                        0,
-                        0,
-                        0,
-                        2,
-                        2,
-                        2
-                    ]
-                ) +
-                ' ' +
-                show(
-                    delta /
-                    elapsed *
-                    1000,
-                    [
-                        'B/s',
-                        'KB/s',
-                        'MB/s',
-                        'GB/s',
-                        'TB/s',
-                        'PB/s'
-                    ],
-                    [
-                        0,
-                        0,
-                        0,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-    }
-
-
-    lsat_all_down =
-        all_down_a;
-
-    lsat_date =
-        now;
-
-
-    /*
-     * 继续计算。
-     */
-    if (run) {
-
-        setTimeout(
-            cale,
-            1000
-        );
-
-    } else {
-
-        var duration =
-            now - start_time;
-
-
-        if (duration <= 0) {
-
-            duration = 1;
-        }
-
-
-        var avg_speed =
-            1000 *
-            all_down_a /
-            duration;
-
-
-        document.title =
-            '流量杀手';
-
-
-        now_speed = 0;
-
-
-        if (visibl) {
-
-            if (
-                download_mode === 'browser' &&
-                browser_measured_bytes === 0
-            ) {
-
-                document.getElementById(
-                    'speed'
-                ).innerText =
-                    '浏览器下载';
-
-
-                document.getElementById(
-                    'mbps'
-                ).innerText =
-                    '无法读取';
-
-            } else {
-
-                document.getElementById(
-                    'speed'
-                ).innerText =
-                    show(
-                        avg_speed,
-                        [
-                            'B/s',
-                            'KB/s',
-                            'MB/s',
-                            'GB/s',
-                            'TB/s',
-                            'PB/s'
-                        ],
-                        [
-                            0,
-                            0,
-                            1,
-                            2,
-                            2,
-                            2
-                        ]
-                    );
-
-
-                document.getElementById(
-                    'mbps'
-                ).innerText =
-                    show(
-                        avg_speed * 8,
-                        [
-                            'Bps',
-                            'Kbps',
-                            'Mbps',
-                            'Gbps',
-                            'Tbps',
-                            'Pbps'
-                        ],
-                        [
-                            0,
-                            0,
-                            0,
-                            2,
-                            2,
-                            2
-                        ]
-                    );
-            }
-
-
-            document.getElementById(
-                'describe'
-            ).innerText =
-                download_mode === 'browser'
-                    ? '已停止（浏览器兼容模式）'
-                    : '平均速度';
-        }
-
-
-        lsat_all_down = 0;
-    }
-}
-
-
-/*
- * 总流量。
- */
-async function total() {
-
-    var all_down =
-        sum(thread_down);
-
-
-    if (visibl) {
-
-        document.getElementById(
-            'total'
-        ).innerText =
-            show(
-                all_down_sum +
-                all_down,
-                [
-                    'B',
-                    'KB',
-                    'MB',
-                    'GB',
-                    'TB',
-                    'PB'
-                ],
-                [
-                    0,
-                    0,
-                    1,
-                    2,
-                    2,
-                    2
-                ]
-            );
-    }
-
-
-    /*
-     * Browser 模式只有在浏览器能够暴露真实
-     * transferSize 时才能执行 Maximum 限制。
-     *
-     * 否则如果强行用 thread_down 作为判断，
-     * 就会把真实下载的未知流量误认为 0。
-     */
-    if (
-        download_mode !== 'browser' ||
-        browser_measured_bytes > 0
-    ) {
-
-        if (
-            (
-                all_down_sum +
-                all_down
-            ) >= Maximum &&
-            Maximum != 0
-        ) {
-
-            stop();
-        }
-    }
-
-
-    if (run) {
-
-        setTimeout(
-            total,
-            16
-        );
-
-    } else {
-
-        all_down_sum +=
-            all_down;
-
-
-        if (visibl) {
-
-            document.getElementById(
-                'total'
-            ).innerText =
-                show(
-                    all_down_sum,
-                    [
-                        'B',
-                        'KB',
-                        'MB',
-                        'GB',
-                        'TB',
-                        'PB'
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-    }
-}
-
-
-/*
- * 中国 IP 信息。
- */
-var cnip = '';
-
+var cnip = ''
 
 function ipcn() {
-
     if (visibl) {
-
-        fetch(
-            'https://forge.speedtest.cn/api/location/info',
-            {
-                referrerPolicy: 'no-referrer'
-            }
-        )
-        .then(function(response) {
-
-            return response.json();
-
-        })
-        .then(function(data) {
-
-            var tag =
-                document.getElementById(
-                    'ipcn'
-                );
-
-
-            if (!tag) {
-                return;
-            }
-
-
-            tag.innerText =
-                data.ip +
-                ' ' +
-                data.province +
-                ' ' +
-                data.city +
-                ' ' +
-                data.distinct +
-                ' ' +
-                data.isp;
-
-
-            if (data.ip !== cnip) {
-
-                tag.style.color = '';
-
-                ckip(
-                    data.ip,
-                    tag
-                );
-            }
-
-
-            cnip =
-                data.ip;
-
-        })
-        .catch(function() {});
+        fetch('https://forge.speedtest.cn/api/location/info', { referrerPolicy: 'no-referrer' })
+            .then(response => response.json())
+            .then(data => {
+                var tag = document.getElementById("ipcn")
+                tag.innerText = data['ip'] + ' ' + data['province'] + ' ' + data['city'] + ' ' + data['distinct'] + ' ' + data['isp']
+                if (data['ip'] !== cnip) {
+                    tag.style.color = ''
+                    ckip(data['ip'], tag)
+                }
+                cnip = data['ip'];
+            })
+            .catch(function(err) { console.warn('ipcn failed', err) });
     }
-
-
-    setTimeout(
-        ipcn,
-        5000
-    );
+    setTimeout(ipcn, 5000)
 }
-
-
-/*
- * 全球 IP 信息。
- */
-var gbip = '';
-
+var gbip = ""
 
 function ipgb() {
-
     if (visibl) {
-
-        fetch(
-            'https://api-ipv4.ip.sb/geoip',
-            {
-                referrerPolicy: 'no-referrer'
-            }
-        )
-        .then(function(response) {
-
-            return response.json();
-
-        })
-        .then(function(data) {
-
-            var tag =
-                document.getElementById(
-                    'ipgb'
-                );
-
-
-            if (!tag) {
-                return;
-            }
-
-
-            var country =
-                CountryCode_Zh_cn[
-                    data.country_code
-                ] ||
-                data.country_code ||
-                '';
-
-
-            tag.innerText =
-                data.ip +
-                ' ' +
-                country +
-                ' ' +
-                data.isp;
-
-
-            if (data.ip !== gbip) {
-
-                tag.style.color = '';
-
-                ckip(
-                    data.ip,
-                    tag
-                );
-            }
-
-
-            gbip =
-                data.ip;
-
-        })
-        .catch(function() {});
-    }
-
-
-    setTimeout(
-        ipgb,
-        refresh_lay
-    );
-}
-
-
-/*
- * 国内延迟。
- */
-function laycn() {
-
-    if (visibl) {
-
-        var start_ti =
-            new Date().getTime();
-
-
-        fetch(
-            'https://connectivitycheck.platform.hicloud.com/generate_204',
-            {
-                method: 'HEAD',
-                cache: 'no-store',
-                mode: 'no-cors',
-                referrerPolicy: 'no-referrer'
-            }
-        )
-        .then(function() {
-
-            var lay =
-                new Date().getTime() -
-                start_ti;
-
-
-            now_local_ping =
-                lay;
-
-
-            var el =
-                document.getElementById(
-                    'laycn'
-                );
-
-
-            if (el) {
-
-                el.innerText =
-                    lay +
-                    'ms';
-            }
-
-        })
-        .catch(function() {
-
-            var el =
-                document.getElementById(
-                    'laycn'
-                );
-
-
-            if (el) {
-
-                el.innerText =
-                    '-ms';
-            }
-        });
-    }
-
-
-    setTimeout(
-        laycn,
-        1000
-    );
-}
-
-
-/*
- * 全球延迟。
- */
-function laygb() {
-
-    if (visibl) {
-
-        var start_ti =
-            new Date().getTime();
-
-
-        fetch(
-            'https://cp.cloudflare.com/',
-            {
-                method: 'HEAD',
-                cache: 'no-store',
-                mode: 'no-cors',
-                referrerPolicy: 'no-referrer'
-            }
-        )
-        .then(function() {
-
-            var lay =
-                new Date().getTime() -
-                start_ti;
-
-
-            now_global_ping =
-                lay;
-
-
-            var el =
-                document.getElementById(
-                    'laygb'
-                );
-
-
-            if (el) {
-
-                el.innerText =
-                    lay +
-                    'ms';
-            }
-
-        })
-        .catch(function() {
-
-            var el =
-                document.getElementById(
-                    'laygb'
-                );
-
-
-            if (el) {
-
-                el.innerText =
-                    '-ms';
-            }
-        });
-    }
-
-
-    setTimeout(
-        laygb,
-        1000
-    );
-}
-
-
-/*
- * 判断某些站点是否可访问。
- */
-function ckbl() {
-
-    if (visibl) {
-
-        var controller =
-            new AbortController();
-
-
-        setTimeout(function() {
-
-            controller.abort();
-
-        }, 2000);
-
-
-        fetch(
-            'https://twitter.com/',
-            {
-                signal:
-                    controller.signal,
-
-                method: 'HEAD',
-
-                cache: 'no-store',
-
-                mode: 'no-cors',
-
-                referrerPolicy:
-                    'no-referrer'
-            }
-        )
-        .then(function() {
-
-            var el =
-                document.getElementById(
-                    'laygb'
-                );
-
-
-            if (el) {
-
-                el.style.color =
-                    'green';
-            }
-
-        })
-        .catch(function() {
-
-            var el =
-                document.getElementById(
-                    'laygb'
-                );
-
-
-            if (el) {
-
-                el.style.color =
-                    'red';
-            }
-        });
-    }
-
-
-    setTimeout(
-        ckbl,
-        1000
-    );
-}
-
-
-/*
- * 检查 IP 类型。
- */
-function ckip(ip, tag) {
-
-    if (checkIP) {
-
-        fetch(
-            'https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' +
-            ip
-        )
-        .then(function(response) {
-
-            return response.json();
-
-        })
-        .then(function(data) {
-
-            if (
-                data &&
-                data.data &&
-                data.data.company
-            ) {
-
-                console.log(
-                    data.input,
-                    data.data.country,
-                    data.data.city,
-                    data.data.asn &&
-                    data.data.asn.name,
-                    data.data.company.type
-                );
-
-
-                if (
-                    data.data.company.type ===
-                    'isp'
-                ) {
-
-                    tag.style.color =
-                        'green';
+        fetch('https://api-ipv4.ip.sb/geoip', { referrerPolicy: 'no-referrer' })
+            .then(response => response.json())
+            .then(data => {
+                var tag = document.getElementById("ipgb")
+                var country = CountryCode_Zh_cn[data['country_code']] || data['country'] || ''
+                tag.innerText = data['ip'] + ' ' + country + ' ' + data['isp']
+                if (data['ip'] !== gbip) {
+                    tag.style.color = ''
+                    ckip(data['ip'], tag)
                 }
-            }
-
-        })
-        .catch(function() {});
+                gbip = data['ip'];
+            })
+            .catch(function(err) { console.warn('ipgb failed', err) });
     }
+    setTimeout(ipgb, refresh_lay)
 }
 
 
-/*
- * 页面初始化。
- */
-ipcn();
-
-ipgb();
-
-laycn();
-
-laygb();
-
-ckbl();
-
-
-/*
- * 页面切换前后台。
- *
- * 保留原项目逻辑。
- */
-document.addEventListener(
-    'visibilitychange',
-    function() {
-
-        var state =
-            document.visibilityState;
-
-
-        if (state === 'hidden') {
-
-            visibl = false;
-
-
-            var switchEl =
-                document.getElementById(
-                    'customSwitch2'
-                );
-
-
-            if (
-                run &&
-                switchEl &&
-                !switchEl.checked
-            ) {
-
-                botton_clicked();
-            }
-        }
-
-
-        if (state === 'visible') {
-
-            visibl = true;
-
-            document.title =
-                '流量杀手';
-
-
-            if (
-                download_mode === 'browser' &&
-                browser_measured_bytes === 0
-            ) {
-
-                document.getElementById(
-                    'speed'
-                ).innerText =
-                    '浏览器下载';
-
-
-                document.getElementById(
-                    'mbps'
-                ).innerText =
-                    '无法读取';
-            }
-        }
-    }
-);
-
-
-/*
- * ECharts。
- */
-var chartDom =
-    document.getElementById('dv');
-
-
-var myChart =
-    echarts.init(chartDom);
-
-
-var option;
-
-
-/*
- * 图表配置。
- */
-option = {
-
-    tooltip: {
-
-        trigger: 'axis',
-
-        axisPointer: {
-
-            type: 'cross',
-
-            label: {
-                backgroundColor:
-                    '#6a7985'
-            }
-        }
-    },
-
-
-    legend: {
-
-        data: [
-            'Speed',
-            'Local Ping',
-            'Global Ping'
-        ]
-    },
-
-
-    toolbox: {
-
-        feature: {
-
-            saveAsImage: {}
-        }
-    },
-
-
-    grid: {
-
-        left: '3%',
-
-        right: '4%',
-
-        bottom: '3%',
-
-        containLabel: true
-    },
-
-
-    xAxis: [{
-
-        type: 'category',
-
-        name: '时间(s)',
-
-        boundaryGap: false
-    }],
-
-
-    yAxis: [{
-
-        type: 'value',
-
-        name: '延迟(ms)',
-
-        splitLine: {
-            show: false
-        }
-
-    }, {
-
-        type: 'value',
-
-        name: '速率(MB/s)',
-
-        splitLine: {
-            show: false
-        }
-    }],
-
-
-    series: [{
-
-        name: '速率',
-
-        type: 'line',
-
-        stack: 'Total',
-
-        yAxisIndex: 1,
-
-        areaStyle: {},
-
-        emphasis: {
-            focus: 'series'
-        },
-
-        data: [{
-
-            name: new Date(),
-
-            value: now_global_ping
-        }]
-
-    }, {
-
-        name: '延迟',
-
-        type: 'line',
-
-        data: [{
-
-            name: new Date(),
-
-            value: now_global_ping
-        }]
-    }]
-};
-
-
-option &&
-myChart.setOption(option);
-
-
-/*
- * 图表刷新。
- */
-function dv() {
-
+function laycn() {
     if (visibl) {
-
-        var now =
-            new Date();
-
-
-        option.series[0].data.push({
-
-            name:
-                now.toString(),
-
-            value: [
-                now.getTime(),
-                now_speed.toFixed(1)
-            ]
-        });
-
-
-        option.series[1].data.push({
-
-            name:
-                now.toString(),
-
-            value: [
-                now.getTime(),
-                now_local_ping
-            ]
-        });
-
-
-        myChart.setOption({
-
-            series:
-                option.series
-        });
+        var start_ti = new Date().getTime();
+        fetch("https://connectivitycheck.platform.hicloud.com/generate_204", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                var lay = new Date().getTime() - start_ti;
+                now_local_ping = lay
+                document.getElementById("laycn").innerText = lay + 'ms';
+            })
+            .catch(error => document.getElementById("laycn").innerText = '-ms');
     }
-
-
-    setTimeout(
-        dv,
-        1000
-    );
+    setTimeout(laycn, 1000)
 }
 
+function laygb() {
+    if (visibl) {
+        var start_ti = new Date().getTime();
+        fetch("https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                var lay = new Date().getTime() - start_ti;
+                now_global_ping = lay
+                document.getElementById("laygb").innerText = lay + 'ms';
+            })
+            .catch(error => document.getElementById("laygb").innerText = '-ms');
+    }
+    setTimeout(laygb, 1000)
+}
 
-dv();
+function ckbl() {
+    if (visibl) {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 2000);
+        fetch("https://twitter.com/", { signal: controller.signal, method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                document.getElementById("laygb").style.color = "green";
+            })
+            .catch(error => document.getElementById("laygb").style.color = "red");
+    }
+    setTimeout(ckbl, 1000)
+}
+
+function ckip(ip, tag) {
+    if (checkIP) {
+        fetch('https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' + ip)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.data && data.data.company && data.data.company.type === "isp") tag.style.color = "green"
+            })
+            .catch(function(err) { console.warn('ckip failed', err) });
+    }
+}
+
+ipcn()
+ipgb()
+laycn()
+laygb()
+ckbl()
+
+document.addEventListener("visibilitychange", function() {
+    var string = document.visibilityState
+    if (string === 'hidden') {
+        visibl = false
+        if (run && !document.getElementById("customSwitch2").checked) botton_clicked();
+    }
+    if (string === 'visible') {
+        visibl = true
+        document.title = "流量杀手"
+    }
+});
 
 
-console.log(
-    '[traffic-killer] CORS fallback enabled'
-);
+// ---------- 图表 ----------
+var MAX_POINTS = 300
+var chartDom = document.getElementById('dv');
+var myChart = null
+if (typeof echarts !== 'undefined') {
+    myChart = echarts.init(chartDom);
+    myChart.setOption({
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } }
+        },
+        legend: { data: ['速率', '延迟'] },
+        toolbox: { feature: { saveAsImage: {} } },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: [{ type: 'time', boundaryGap: false }],
+        yAxis: [
+            { type: 'value', name: "延迟(ms)", splitLine: { show: false } },
+            { type: 'value', name: "速率(MB/s)", splitLine: { show: false } }
+        ],
+        series: [
+            { name: '速率', type: 'line', yAxisIndex: 1, areaStyle: {}, emphasis: { focus: 'series' }, data: [] },
+            { name: '延迟', type: 'line', yAxisIndex: 0, data: [] }
+        ]
+    });
+    window.addEventListener('resize', function() { myChart.resize() })
+} else {
+    chartDom.innerText = '图表组件加载失败(echarts CDN 不可用),不影响下载功能'
+}
+var chart_speed = []
+var chart_ping = []
+
+function dv() {
+    if (visibl && myChart) {
+        var t = new Date().getTime()
+        chart_speed.push([t, Number(now_speed.toFixed(1))])
+        chart_ping.push([t, now_local_ping])
+        // 只保留最近 MAX_POINTS 个点,防止长时间运行内存越来越大
+        if (chart_speed.length > MAX_POINTS) chart_speed.shift()
+        if (chart_ping.length > MAX_POINTS) chart_ping.shift()
+        myChart.setOption({
+            series: [{ data: chart_speed }, { data: chart_ping }]
+        });
+    }
+    setTimeout(dv, 1000)
+}
+
+dv()
