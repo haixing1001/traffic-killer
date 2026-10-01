@@ -22,6 +22,10 @@ var size_proxies = [
     'https://corsproxy.io/?url=',
     'https://api.allorigins.win/raw?url='
 ];
+// 已知文件大小的链接（字节）：命中则直接采用，跳过自动探测与手动输入
+var known_file_size = {
+    'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824 // 移动云手机
+};
 
 async function start_thread(index) {
     if (blindMode) {
@@ -216,11 +220,16 @@ async function start() {
     }
     if (blindMode) {
         blind_file_size = 0
-        // 估算模式：先尝试自动获取文件大小，失败则请用户手动输入
-        try { blind_file_size = await probe_file_size(testurl) } catch (e) {}
-        if (!blind_file_size) {
-            var input = prompt('已进入兼容模式（跨域限制，无法精确统计流量）。\n请输入该文件大小以估算流量（如 100MB、1.5GB），\n留空则只计数完成请求数：', '')
-            blind_file_size = parse_size(input)
+        // 已知大小的链接直接采用，无需探测与手动输入
+        if (known_file_size[testurl]) {
+            blind_file_size = known_file_size[testurl]
+        } else {
+            // 估算模式：先尝试自动获取文件大小，失败则请用户手动输入
+            try { blind_file_size = await probe_file_size(testurl) } catch (e) {}
+            if (!blind_file_size) {
+                var input = prompt('已进入兼容模式（跨域限制，无法精确统计流量）。\n请输入该文件大小以估算流量（如 100MB、1.5GB），\n留空则只计数完成请求数：', '')
+                blind_file_size = parse_size(input)
+            }
         }
     }
     if (!linkOk) {
