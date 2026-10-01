@@ -14,8 +14,26 @@ var refresh_lay = 5000
 var now_speed = 0
 var now_local_ping = 0
 var now_global_ping = 0
+// 兼容模式：链接存在跨域限制、无法用 CORS 读取字节时启用。
+// 此时流量照常传输，但无法统计精确字节数，只能计数完成请求数
+var blindMode = false
+var blind_total_req = 0
 
 async function start_thread(index) {
+    if (blindMode) {
+        // 兼容模式：跨域下响应为 opaque，JS 读不到字节数；
+        // 实测浏览器仍会完整下载响应体，这里循环请求保证流量持续传输
+        while (run) {
+            try {
+                await fetch(testurl, { cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+                blind_total_req++
+            } catch (err) {
+                console.log(err)
+                await new Promise(function (res) { setTimeout(res, 1500) })
+            }
+        }
+        return
+    }
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
         const reader = response.body.getReader();
@@ -38,6 +56,23 @@ async function start_thread(index) {
     }
 }
 async function cale() {
+    if (blindMode) {
+        // 兼容模式：跨域下无法统计字节，速率显示为未知，流量仍在传输
+        if (visibl) {
+            document.getElementById("speed").innerText = '—';
+            document.getElementById("mbps").innerText = '—';
+        } else {
+            document.title = '流量杀手'
+        }
+        if (run) setTimeout(cale, 1000)
+        else {
+            document.getElementById("speed").innerText = '—';
+            document.getElementById("mbps").innerText = '—';
+            document.getElementById('describe').innerText = '兼容模式（跨域）';
+            document.title = '流量杀手'
+        }
+        return
+    }
     var all_down_a = sum(thread_down)
     now_speed = (all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000 / 1024 / 1024;
     if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
@@ -59,6 +94,12 @@ async function cale() {
 }
 
 async function total() {
+    if (blindMode) {
+        // 兼容模式：按完成请求数显示；流量上限（按字节）无法适用，跳过自动停止
+        if (visibl) document.getElementById("total").innerText = '已完成 ' + blind_total_req + ' 次请求';
+        if (run) setTimeout(total, 16)
+        return
+    }
     var all_down = sum(thread_down)
     if (visibl) document.getElementById("total").innerText = show((all_down_sum + all_down), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     if ((all_down_sum + all_down) >= Maximum && Maximum != 0) stop()
@@ -95,20 +136,36 @@ async function start() {
     document.getElementById('do').innerText = '正在检验链接...';
     document.getElementById('do').disabled = true;
 
+    blindMode = false
+    var linkOk = false
+    // 第一阶段：CORS 探测，可读到字节则为精确模式
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
         const reader = response.body.getReader();
         const { value, done } = await reader.read();
-        if (value.length <= 0) throw "资源响应异常";
+        if (!value || value.length <= 0) throw "资源响应异常";
         reader.cancel()
+        linkOk = true
     } catch (err) {
-        console.warn(err)
+        console.warn('CORS 探测失败，尝试兼容模式', err)
+    }
+    // 第二阶段：no-cors 探测，跨域限制下仍可传输流量（响应 opaque，无法统计字节）
+    if (!linkOk) {
+        try {
+            await fetch(testurl, { cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            blindMode = true
+            linkOk = true
+        } catch (err) {
+            console.warn(err)
+        }
+    }
+    if (!linkOk) {
         document.getElementById('do').innerText = '开始';
         document.getElementById('do').disabled = false;
-        alert("该链接不可用，如果你能够正常访问该链接，那么很有可能是浏览器的跨域限制")
+        alert("该链接不可用，请检查链接是否正确、网络是否通畅")
         return
     }
-    document.getElementById('describe').innerText = '实时速度';
+    document.getElementById('describe').innerText = blindMode ? '兼容模式（跨域）' : '实时速度';
     document.getElementById('do').innerText = '停止';
     document.getElementById('do').disabled = false;
     var num = maxtheard
@@ -116,6 +173,7 @@ async function start() {
     start_time = new Date().getTime()
     run = true
     thread_down = []
+    blind_total_req = 0
     while (num--) {
         thread_down[num] = 0
         start_thread(num)
