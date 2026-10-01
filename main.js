@@ -14,92 +14,67 @@ var refresh_lay = 5000
 var now_speed = 0
 var now_local_ping = 0
 var now_global_ping = 0
-var start_time = 0
-var run_id = 0            // 每次开始 +1,用于让旧的线程/定时器自动失效
-var cale_timer = null
-var total_timer = null
-var abort_controller = null
-var MAX_THREADS = 32
 
-function sleep(ms) {
-    return new Promise(function(resolve) { setTimeout(resolve, ms) })
-}
-
-// 单个下载线程:循环下载,失败时退避重试,停止/重启后自动退出
-async function start_thread(index, id) {
-    var signal = abort_controller.signal
-    var arr = thread_down
-    var fails = 0
-    while (run && id === run_id) {
-        var got = 0
-        try {
-            const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer', signal: signal })
-            if (!response.ok) throw new Error("HTTP " + response.status)
-            const reader = response.body.getReader()
-            while (true) {
-                const { value, done } = await reader.read()
-                if (!run || id !== run_id) {
-                    reader.cancel()
-                    return
-                }
-                if (done) break
-                got += value.length
-                arr[index] += value.length
+async function start_thread(index) {
+    try {
+        const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
+        const reader = response.body.getReader();
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+                reader.cancel()
+                start_thread(index);
+                break;
             }
-        } catch (err) {
-            if (!run || id !== run_id) return
-            console.log(err)
+            if (!run) {
+                reader.cancel()
+                break
+            }
+            thread_down[index] += value.length
         }
-        if (got > 0) {
-            fails = 0
-        } else {
-            // 没有拿到任何数据(403/404/断网等):退避,避免无间隔狂刷请求
-            fails++
-            await sleep(Math.min(500 * fails, 5000))
-        }
+    } catch (err) {
+        console.log(err)
+        if (run) start_thread(index);
     }
 }
-
-// 每秒刷新实时速度
-function cale(id) {
-    if (id !== run_id || !run) return
+async function cale() {
     var all_down_a = sum(thread_down)
-    var now = new Date().getTime()
-    var dt = now - lsat_date
-    var bps = dt > 0 ? (all_down_a - lsat_all_down) / dt * 1000 : 0
-    now_speed = bps / 1024 / 1024
-    if (visibl) {
-        document.getElementById("speed").innerText = show(bps, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2])
-        document.getElementById("mbps").innerText = show(bps * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2])
-    } else {
-        document.title = show(all_down_sum + all_down_a, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 0, 2, 2, 2]) + ' ' + show(bps, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 0, 2, 2, 2])
-    }
+    now_speed = (all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000 / 1024 / 1024;
+    if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
+    if (visibl) document.getElementById("mbps").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 8000, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
+    if (!visibl) document.title = show((all_down_sum + all_down_a), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 0, 2, 2, 2]) + ' ' + show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 0, 2, 2, 2]);
     lsat_all_down = all_down_a
-    lsat_date = now
-    cale_timer = setTimeout(function() { cale(id) }, 1000)
+    lsat_date = new Date().getTime();
+    if (run) setTimeout(cale, 1000)
+    else {
+        var avg_speed = 1000 * (all_down_a) / (new Date().getTime() - start_time)
+
+        document.title = '流量杀手'
+        now_speed = 0
+        document.getElementById("speed").innerText = show((avg_speed), ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
+        document.getElementById("mbps").innerText = show((avg_speed) * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
+        lsat_all_down = 0
+        document.getElementById('describe').innerText = '平均速度';
+    }
 }
 
-// 刷新累计流量,达到上限自动停止
-function total(id) {
-    if (id !== run_id || !run) return
+async function total() {
     var all_down = sum(thread_down)
-    if (visibl) document.getElementById("total").innerText = show(all_down_sum + all_down, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
-    if (Maximum != 0 && all_down_sum + all_down >= Maximum) {
-        stop()
-        return
+    if (visibl) document.getElementById("total").innerText = show((all_down_sum + all_down), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
+    if ((all_down_sum + all_down) >= Maximum && Maximum != 0) stop()
+    if (run) setTimeout(total, 16)
+    else {
+        all_down_sum += all_down;
+        document.getElementById("total").innerText = show((all_down_sum), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     }
-    total_timer = setTimeout(function() { total(id) }, 50)
 }
 
 async function start() {
-    if (Maximum != 0 && all_down_sum >= Maximum) {
+    if (all_down_sum >= Maximum && Maximum != 0) {
         all_down_sum = 0
     }
-    var threads = parseInt(document.getElementById("thread").value, 10)
-    if (!(threads >= 1)) threads = 1
-    if (threads > MAX_THREADS) threads = MAX_THREADS
-    maxtheard = threads
-    testurl = document.getElementById("link").value.trim()
+    maxtheard = document.getElementById("thread").value;
+    testurl = document.getElementById("link").value;
     if (testurl.length < 10) {
         alert("链接不合法")
         return;
@@ -110,7 +85,7 @@ async function start() {
         return;
     }
     if (testurl.startsWith("http://")) {
-        alert("由于浏览器安全限制,不支持http协议,请使用https协议")
+        alert("由于浏览器安全限制，不支持http协议，请使用https协议")
         return;
     }
     if (!testurl.startsWith("https://")) {
@@ -122,60 +97,36 @@ async function start() {
 
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
-        if (!response.ok) throw new Error("服务器返回 HTTP " + response.status)
         const reader = response.body.getReader();
-        const { value } = await reader.read();
+        const { value, done } = await reader.read();
+        if (value.length <= 0) throw "资源响应异常";
         reader.cancel()
-        if (!value || value.length <= 0) throw new Error("资源响应为空(可能有防盗链,或资源已失效)")
     } catch (err) {
         console.warn(err)
         document.getElementById('do').innerText = '开始';
         document.getElementById('do').disabled = false;
-        if (err && err.name === "TypeError") {
-            alert("该链接无法访问:请求被浏览器拦截。\n如果你能在浏览器中直接打开它,大概率是目标服务器没有开启 CORS(Access-Control-Allow-Origin),请换一个支持跨域的地址。")
-        } else {
-            alert("该链接不可用:" + err.message)
-        }
+        alert("该链接不可用，如果你能够正常访问该链接，那么很有可能是浏览器的跨域限制")
         return
     }
     document.getElementById('describe').innerText = '实时速度';
     document.getElementById('do').innerText = '停止';
     document.getElementById('do').disabled = false;
-
-    run_id++
-    var id = run_id
-    abort_controller = new AbortController()
-    thread_down = []
-    for (var i = 0; i < threads; i++) thread_down[i] = 0
+    var num = maxtheard
     lsat_all_down = 0
     start_time = new Date().getTime()
-    lsat_date = start_time
     run = true
-    for (var j = 0; j < threads; j++) start_thread(j, id)
-    cale_timer = setTimeout(function() { cale(id) }, 1000)
-    total(id)
+    thread_down = []
+    while (num--) {
+        thread_down[num] = 0
+        start_thread(num)
+    }
+    cale()
+    total()
 }
 
 function stop() {
-    if (!run) return
     run = false
-    if (abort_controller) abort_controller.abort()
-    clearTimeout(cale_timer)
-    clearTimeout(total_timer)
-
-    var all_down = sum(thread_down)
-    all_down_sum += all_down
-    var duration = new Date().getTime() - start_time
-    var avg_speed = duration > 0 ? 1000 * all_down / duration : 0
-
-    now_speed = 0
-    lsat_all_down = 0
-    document.title = '流量杀手'
-    document.getElementById("total").innerText = show(all_down_sum, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2])
-    document.getElementById("speed").innerText = show(avg_speed, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2])
-    document.getElementById("mbps").innerText = show(avg_speed * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2])
-    document.getElementById('describe').innerText = '平均速度'
-    document.getElementById('do').innerText = '开始'
+    document.getElementById('do').innerText = '开始';
 }
 
 function sum(arr) {
@@ -195,8 +146,14 @@ function botton_clicked() {
 }
 
 function checkURL(URL) {
-    var Expression = /^https?:\/\/([\w-]+\.)+[\w-]+(:\d+)?(\/\S*)?$/i;
-    return Expression.test(URL);
+    var str = URL;
+    var Expression = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
+    var objExp = new RegExp(Expression);
+    if (objExp.test(str) == true) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 var cnip = ''
@@ -213,8 +170,7 @@ function ipcn() {
                     ckip(data['ip'], tag)
                 }
                 cnip = data['ip'];
-            })
-            .catch(function(err) { console.warn('ipcn failed', err) });
+            });
     }
     setTimeout(ipcn, 5000)
 }
@@ -226,15 +182,13 @@ function ipgb() {
             .then(response => response.json())
             .then(data => {
                 var tag = document.getElementById("ipgb")
-                var country = CountryCode_Zh_cn[data['country_code']] || data['country'] || ''
-                tag.innerText = data['ip'] + ' ' + country + ' ' + data['isp']
+                tag.innerText = data['ip'] + ' ' + CountryCode_Zh_cn[data['country_code']] + ' ' + data['isp']
                 if (data['ip'] !== gbip) {
                     tag.style.color = ''
                     ckip(data['ip'], tag)
                 }
                 gbip = data['ip'];
-            })
-            .catch(function(err) { console.warn('ipgb failed', err) });
+            });
     }
     setTimeout(ipgb, refresh_lay)
 }
@@ -257,7 +211,7 @@ function laycn() {
 function laygb() {
     if (visibl) {
         var start_ti = new Date().getTime();
-        fetch("https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+        fetch("	https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
             .then(function() {
                 var lay = new Date().getTime() - start_ti;
                 now_global_ping = lay
@@ -286,9 +240,9 @@ function ckip(ip, tag) {
         fetch('https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' + ip)
             .then(response => response.json())
             .then(data => {
-                if (data && data.data && data.data.company && data.data.company.type === "isp") tag.style.color = "green"
-            })
-            .catch(function(err) { console.warn('ckip failed', err) });
+                console.log(data.input, data.data.country, data.data.city, data.data.asn.name, data.data.company.type)
+                if (data.data.company.type === "isp") tag.style.color = "green"
+            });
     }
 }
 
@@ -311,47 +265,109 @@ document.addEventListener("visibilitychange", function() {
 });
 
 
-// ---------- 图表 ----------
-var MAX_POINTS = 300
+
+
 var chartDom = document.getElementById('dv');
-var myChart = null
-if (typeof echarts !== 'undefined') {
-    myChart = echarts.init(chartDom);
-    myChart.setOption({
-        tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } }
+var myChart = echarts.init(chartDom);
+var option;
+
+option = {
+    tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+            type: 'cross',
+            label: {
+                backgroundColor: '#6a7985'
+            }
+        }
+    },
+    legend: {
+        data: ['Speed', 'Local Ping', 'Global Ping']
+    },
+    toolbox: {
+        feature: {
+            saveAsImage: {}
+        }
+    },
+    grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+    },
+    xAxis: [{
+        type: 'category',
+        name: "时间(s)",
+        boundaryGap: false,
+    }],
+    yAxis: [{
+            type: 'value',
+            name: "延迟(ms)",
+            splitLine: {
+                show: false
+            }
         },
-        legend: { data: ['速率', '延迟'] },
-        toolbox: { feature: { saveAsImage: {} } },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: [{ type: 'time', boundaryGap: false }],
-        yAxis: [
-            { type: 'value', name: "延迟(ms)", splitLine: { show: false } },
-            { type: 'value', name: "速率(MB/s)", splitLine: { show: false } }
-        ],
-        series: [
-            { name: '速率', type: 'line', yAxisIndex: 1, areaStyle: {}, emphasis: { focus: 'series' }, data: [] },
-            { name: '延迟', type: 'line', yAxisIndex: 0, data: [] }
-        ]
-    });
-    window.addEventListener('resize', function() { myChart.resize() })
-} else {
-    chartDom.innerText = '图表组件加载失败(echarts CDN 不可用),不影响下载功能'
-}
-var chart_speed = []
-var chart_ping = []
+        {
+            type: 'value',
+            name: "速率(MB/s)",
+            splitLine: {
+                show: false
+            }
+        }
+    ],
+    series: [{
+            name: '速率',
+            type: 'line',
+            stack: 'Total',
+            yAxisIndex: 1,
+            areaStyle: {},
+            emphasis: {
+                focus: 'series'
+            },
+            data: [{
+                name: new Date(),
+                value: now_global_ping
+            }]
+        },
+        {
+            name: '延迟',
+            type: 'line',
+            data: [{
+                name: new Date(),
+                value: now_global_ping
+            }]
+        }
+    ]
+};
+
+option && myChart.setOption(option);
 
 function dv() {
-    if (visibl && myChart) {
-        var t = new Date().getTime()
-        chart_speed.push([t, Number(now_speed.toFixed(1))])
-        chart_ping.push([t, now_local_ping])
-        // 只保留最近 MAX_POINTS 个点,防止长时间运行内存越来越大
-        if (chart_speed.length > MAX_POINTS) chart_speed.shift()
-        if (chart_ping.length > MAX_POINTS) chart_ping.shift()
+    if (visibl) {
+        now = new Date()
+        option.series[0].data.push({
+                name: now.toString(),
+                value: [
+                    now.getTime(), now_speed.toFixed(1)
+                ]
+            })
+            // option.series[0].data.shift()
+        option.series[1].data.push({
+                name: now.toString(),
+                value: [
+                    now.getTime(), now_local_ping
+                ]
+            })
+            // option.series[1].data.shift()
+            // option.series[2].data.push({
+            //         name: now.toString(),
+            //         value: [
+            //             now.getTime(), now_global_ping
+            //         ]
+            //     })
+            // option.series[2].data.shift()
         myChart.setOption({
-            series: [{ data: chart_speed }, { data: chart_ping }]
+            series: option.series
         });
     }
     setTimeout(dv, 1000)
