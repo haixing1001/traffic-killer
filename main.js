@@ -1,2515 +1,376 @@
-/*
- * traffic-killer
- *
- * 版本：
- * CORS + 流式代理兼容版
- *
- * 功能：
- * 1. CORS 地址继续直接 fetch + ReadableStream
- * 2. CORS 失败自动切换到自建流式代理
- * 3. 代理模式仍然使用 response.body.getReader()
- * 4. 实时 MB/s、Mbps、累计流量继续按照实际读取字节计算
- * 5. 支持 100 / 200 / 500 逻辑线程
- * 6. 停止时主动 Abort 所有连接
- *
- * 注意：
- * TRAFFIC_PROXY 必须指向你自己部署的代理。
- *
- * 示例：
- *
- * var TRAFFIC_PROXY =
- *     "https://traffic-proxy.example.com/?url=";
- *
- * 代理最终请求：
- *
- * https://traffic-proxy.example.com/?url=https%3A%2F%2Fcloud.139.com%2F....
- *
- */
-
-var maxtheard;
-var testurl;
-var lsat_date = 0;
-
-var all_down_sum = 0;
-var run = false;
-var checkIP = true;
-var visibl = true;
-
-var thread_down = [];
-var lsat_all_down = 0;
-var refresh_lay = 5000;
-
-var now_speed = 0;
-var now_local_ping = 0;
-var now_global_ping = 0;
-
-var start_time = 0;
+var maxtheard
+var testurl
+var lsat_date = 0
+var CountryCode_Zh_cn = { "US": "\u7f8e\u56fd", "CA": "\u52a0\u62ff\u5927", "HK": "\u9999\u6e2f(\u4e2d\u56fd)", "TW": "\u53f0\u6e7e(\u4e2d\u56fd)", "SG": "\u65b0\u52a0\u5761", "JP": "\u65e5\u672c", "KR": "\u97e9\u56fd", "AU": "\u6fb3\u5927\u5229\u4e9a", "NZ": "\u65b0\u897f\u5170", "AF": "\u963f\u5bcc\u6c57", "AL": "\u963f\u5c14\u5df4\u5c3c\u4e9a", "DZ": "\u963f\u5c14\u53ca\u5229\u4e9a", "AS": "\u7f8e\u5c5e\u8428\u6469\u4e9a(\u7f8e\u56fd)", "AD": "\u5b89\u9053\u5c14", "AO": "\u5b89\u54e5\u62c9", "AI": "\u5b89\u572d\u62c9", "AG": "\u5b89\u63d0\u74dc\u548c\u5df4\u5e03\u8fbe", "AR": "\u963f\u6839\u5ef7", "AM": "\u4e9a\u7f8e\u5c3c\u4e9a", "AW": "\u963f\u9c81\u5df4", "AT": "\u5965\u5730\u5229", "AZ": "\u963f\u585e\u62dc\u7586", "BS": "\u5df4\u54c8\u9a6c", "BH": "\u5df4\u6797", "BD": "\u5b5f\u52a0\u62c9\u56fd", "BB": "\u5df4\u5df4\u591a\u65af", "BY": "\u767d\u4fc4\u7f57\u65af", "BE": "\u6bd4\u5229\u65f6", "BZ": "\u4f2f\u5229\u5179", "BJ": "\u8d1d\u5b81", "BM": "\u767e\u6155\u5927", "BT": "\u4e0d\u4e39", "BO": "\u73bb\u5229\u7ef4\u4e9a", "BA": "\u6ce2\u9ed1", "BW": "\u535a\u8328\u74e6\u7eb3", "BR": "\u5df4\u897f", "VG": "\u82f1\u5c5e\u7ef4\u4eac\u7fa4\u5c9b(\u82f1\u56fd)", "BN": "\u6587\u83b1", "BG": "\u4fdd\u52a0\u5229\u4e9a", "BF": "\u5e03\u57fa\u7eb3\u6cd5\u7d22", "BI": "\u5e03\u9686\u8fea", "KH": "\u67ec\u57d4\u5be8", "CM": "\u5580\u9ea6\u9686", "CV": "\u4f5b\u5f97\u89d2", "KY": "\u5f00\u66fc\u7fa4\u5c9b(\u82f1\u56fd)", "CF": "\u4e2d\u975e\u5171\u548c\u56fd", "TD": "\u4e4d\u5f97", "CL": "\u667a\u5229", "CO": "\u54e5\u4f26\u6bd4\u4e9a", "KM": "\u79d1\u6469\u7f57", "CD": "\u521a\u679c(\u91d1)", "CK": "\u5e93\u514b\u7fa4\u5c9b(\u65b0\u897f\u5170)", "CR": "\u54e5\u65af\u8fbe\u9ece\u52a0", "CI": "\u79d1\u7279\u8fea\u74e6", "HR": "\u514b\u7f57\u5730\u4e9a", "CU": "\u53e4\u5df4", "CY": "\u585e\u6d66\u8def\u65af", "CZ": "\u6377\u514b", "DK": "\u4e39\u9ea6", "DJ": "\u5409\u5e03\u63d0", "DM": "\u591a\u7c73\u5c3c\u514b", "DO": "\u591a\u7c73\u5c3c\u52a0\u5171\u548c\u56fd", "EC": "\u5384\u74dc\u591a\u5c14", "EG": "\u57c3\u53ca", "SV": "\u8428\u5c14\u74e6\u591a", "GQ": "\u8d64\u9053\u51e0\u5185\u4e9a", "ER": "\u5384\u7acb\u7279\u91cc\u4e9a", "EE": "\u7231\u6c99\u5c3c\u4e9a", "ET": "\u57c3\u585e\u4fc4\u6bd4\u4e9a", "FO": "\u6cd5\u7f57\u7fa4\u5c9b(\u4e39\u9ea6)", "FJ": "\u6590\u6d4e", "FI": "\u82ac\u5170", "FR": "\u6cd5\u56fd", "GF": "\u6cd5\u5c5e\u572d\u4e9a\u90a3(\u6cd5\u56fd)", "PF": "\u6cd5\u5c5e\u73bb\u5229\u5c3c\u897f\u4e9a", "GA": "\u52a0\u84ec", "GM": "\u5188\u6bd4\u4e9a", "GE": "\u683c\u9c81\u5409\u4e9a", "DE": "\u5fb7\u56fd", "GH": "\u52a0\u7eb3", "GI": "\u76f4\u5e03\u7f57\u9640(\u82f1\u56fd)", "GR": "\u5e0c\u814a", "GL": "\u683c\u9675\u5170", "GD": "\u683c\u6797\u7eb3\u8fbe", "GP": "\u74dc\u5fb7\u7f57\u666e", "GU": "\u5173\u5c9b(\u7f8e\u56fd)", "GT": "\u5371\u5730\u9a6c\u62c9", "GN": "\u51e0\u5185\u4e9a", "GW": "\u51e0\u5185\u4e9a\u6bd4\u7ecd", "GY": "\u572d\u4e9a\u90a3", "HT": "\u6d77\u5730", "HN": "\u6d2a\u90fd\u62c9\u65af", "HU": "\u5308\u7259\u5229", "IS": "\u51b0\u5c9b", "IN": "\u5370\u5ea6", "ID": "\u5370\u5ea6\u5c3c\u897f\u4e9a", "IR": "\u4f0a\u6717", "IQ": "\u4f0a\u62c9\u514b", "IE": "\u7231\u5c14\u5170\u5171\u548c\u56fd", "IL": "\u4ee5\u8272\u5217", "IT": "\u610f\u5927\u5229", "JM": "\u7259\u4e70\u52a0", "JO": "\u7ea6\u65e6", "KZ": "\u54c8\u8428\u514b\u65af\u5766", "KE": "\u80af\u5c3c\u4e9a", "KI": "\u57fa\u91cc\u5df4\u65af", "KP": "\u5317\u671d\u9c9c", "KW": "\u79d1\u5a01\u7279", "KG": "\u5409\u5c14\u5409\u65af\u65af\u5766", "LA": "\u8001\u631d", "LV": "\u62c9\u8131\u7ef4\u4e9a", "LB": "\u9ece\u5df4\u5ae9", "LS": "\u83b1\u7d22\u6258", "LR": "\u5229\u6bd4\u91cc\u4e9a", "LY": "\u5229\u6bd4\u4e9a", "LI": "\u5217\u652f\u6566\u58eb\u767b", "LT": "\u7acb\u9676\u5b9b", "LU": "\u5362\u68ee\u5821", "MO": "\u6fb3\u95e8(\u4e2d\u56fd)", "MK": "\u9a6c\u5176\u987f", "MG": "\u9a6c\u8fbe\u52a0\u65af\u52a0", "MW": "\u9a6c\u62c9\u7ef4", "MY": "\u9a6c\u6765\u897f\u4e9a", "MV": "\u9a6c\u5c14\u4ee3\u592b", "ML": "\u9a6c\u91cc\u5171\u548c\u56fd", "MT": "\u9a6c\u8033\u4ed6", "MH": "\u9a6c\u7ecd\u5c14\u7fa4\u5c9b", "MQ": "\u9a6c\u63d0\u5c3c\u514b(\u6cd5\u56fd)", "MR": "\u6bdb\u91cc\u5854\u5c3c\u4e9a", "MU": "\u6bdb\u91cc\u6c42\u65af", "YT": "\u9a6c\u7ea6\u7279", "MX": "\u58a8\u897f\u54e5", "FM": "\u5bc6\u514b\u7f57\u5c3c\u897f\u4e9a\u8054\u90a6", "MD": "\u6469\u5c14\u591a\u74e6", "MC": "\u6469\u7eb3\u54e5", "MN": "\u8499\u53e4\u56fd", "ME": "\u9ed1\u5c71\u5171\u548c\u56fd", "MS": "\u8499\u585e\u62c9\u7279\u5c9b(\u82f1\u56fd)", "MA": "\u6469\u6d1b\u54e5", "MZ": "\u83ab\u6851\u6bd4\u514b", "MM": "\u7f05\u7538", "NA": "\u7eb3\u7c73\u6bd4\u4e9a", "NR": "\u7459\u9c81", "NP": "\u5c3c\u6cca\u5c14", "599": "\u8377\u5c5e\u5b89\u7684\u5217\u65af", "NL": "\u8377\u5170", "NC": "\u65b0\u5580\u91cc\u591a\u5c3c\u4e9a(\u6cd5\u56fd)", "NI": "\u5c3c\u52a0\u62c9\u74dc", "NE": "\u5c3c\u65e5\u5c14", "NG": "\u5c3c\u65e5\u5229\u4e9a", "NU": "\u7ebd\u57c3", "MP": "\u5317\u9a6c\u91cc\u4e9a\u7eb3\u7fa4\u5c9b(\u7f8e\u56fd)", "NO": "\u632a\u5a01", "OM": "\u963f\u66fc", "PK": "\u5df4\u57fa\u65af\u5766", "PW": "\u5e15\u52b3", "PS": "\u5df4\u52d2\u65af\u5766", "PA": "\u5df4\u62ff\u9a6c", "PG": "\u5df4\u5e03\u4e9a\u65b0\u51e0\u5185\u4e9a", "PY": "\u5df4\u62c9\u572d", "CN": "\u4e2d\u56fd", "PE": "\u79d8\u9c81", "PH": "\u83f2\u5f8b\u5bbe", "PL": "\u6ce2\u5170", "PT": "\u8461\u8404\u7259", "PR": "\u6ce2\u591a\u9ece\u5404(\u7f8e\u56fd)", "QA": "\u5361\u5854\u5c14", "CG": "\u521a\u679c\u5171\u548c\u56fd", "ZW": "\u6d25\u5df4\u5e03\u97e6", "RE": "\u7559\u5c3c\u6c6a(\u6cd5\u56fd)", "RO": "\u7f57\u9a6c\u5c3c\u4e9a", "RU": "\u4fc4\u7f57\u65af", "RW": "\u5362\u65fa\u8fbe", "SH": "\u5723\u8d6b\u52d2\u62ff", "KN": "\u5723\u57fa\u8328\u548c\u5c3c\u7ef4\u65af", "LC": "\u5723\u5362\u897f\u4e9a", "PM": "\u5723\u76ae\u57c3\u5c14\u548c\u5bc6\u514b\u9686\u5c9b(\u6cd5\u56fd)", "VC": "\u5723\u6587\u68ee\u7279\u548c\u683c\u6797\u7eb3\u4e01\u65af", "WS": "\u8428\u6469\u4e9a", "SM": "\u5723\u9a6c\u529b\u8bfa", "ST": "\u5723\u591a\u7f8e\u548c\u666e\u6797\u897f\u6bd4", "SA": "\u6c99\u7279\u963f\u62c9\u4f2f", "SN": "\u585e\u5185\u52a0\u5c14", "RS": "\u585e\u5c14\u7ef4\u4e9a\u5171\u548c\u56fd", "SC": "\u585e\u820c\u5c14", "SL": "\u585e\u62c9\u5229\u6602", "SK": "\u65af\u6d1b\u4f10\u514b", "SI": "\u65af\u6d1b\u6587\u5c3c\u4e9a", "SB": "\u6240\u7f57\u95e8\u7fa4\u5c9b", "SO": "\u7d22\u9a6c\u91cc", "ZA": "\u5357\u975e", "SS": "\u5357\u82cf\u4e39", "ES": "\u897f\u73ed\u7259", "LK": "\u65af\u91cc\u5170\u5361", "SD": "\u82cf\u4e39", "SR": "\u82cf\u91cc\u5357", "SZ": "\u65af\u5a01\u58eb\u5170", "SE": "\u745e\u5178", "CH": "\u745e\u58eb", "SY": "\u53d9\u5229\u4e9a", "TJ": "\u5854\u5409\u514b\u65af\u5766", "TZ": "\u5766\u6851\u5c3c\u4e9a", "TH": "\u6cf0\u56fd", "TL": "\u4e1c\u5e1d\u6c76", "TG": "\u591a\u54e5", "TK": "\u6258\u514b\u52b3", "TO": "\u6c64\u52a0", "TT": "\u7279\u7acb\u5c3c\u8fbe\u548c\u591a\u5df4\u54e5", "TN": "\u7a81\u5c3c\u65af", "TR": "\u571f\u8033\u5176", "TM": "\u571f\u5e93\u66fc\u65af\u5766", "TC": "\u7279\u514b\u65af\u548c\u51ef\u79d1\u65af\u7fa4\u5c9b(\u82f1\u56fd)", "TV": "\u56fe\u74e6\u5362", "UG": "\u4e4c\u5e72\u8fbe", "UA": "\u4e4c\u514b\u5170", "AE": "\u963f\u62c9\u4f2f\u8054\u5408\u914b\u957f\u56fd", "GB": "\u82f1\u56fd", "UY": "\u4e4c\u62c9\u572d", "UZ": "\u4e4c\u5179\u522b\u514b\u65af\u5766", "VU": "\u74e6\u52aa\u963f\u56fe", "VE": "\u59d4\u5185\u745e\u62c9", "VN": "\u8d8a\u5357", "WF": "\u74e6\u5229\u65af\u548c\u5bcc\u56fe\u7eb3\u7fa4\u5c9b(\u6cd5\u56fd)", "YE": "\u4e5f\u95e8", "ZM": "\u8d5e\u6bd4\u4e9a" }
+var all_down_sum = 0
+var run = false
+var checkIP = true
+var visibl = true
+var thread_down = []
+var lsat_all_down = 0
+var refresh_lay = 5000
 
 
-/*
- * ============================================================
- * 流式代理地址
- * ============================================================
- *
- * 如果你没有配置代理：
- *
- * var TRAFFIC_PROXY = "";
- *
- * 那么 CORS 失败后会提示配置代理。
- *
- * Cloudflare Worker 示例：
- *
- * var TRAFFIC_PROXY =
- *     "https://traffic-proxy.xxxxx.workers.dev/?url=";
- *
- */
-var TRAFFIC_PROXY =
-    "https://YOUR-WORKER.workers.dev/?url=";
+var now_speed = 0
+var now_local_ping = 0
+var now_global_ping = 0
 
-
-/*
- * 是否允许 CORS 失败后使用代理。
- */
-var ENABLE_PROXY_FALLBACK = true;
-
-
-/*
- * 当前运行模式：
- *
- * direct = 直接访问目标
- * proxy  = 通过流式代理访问
- */
-var DOWNLOAD_MODE = "direct";
-
-
-/*
- * 用于停止旧任务。
- *
- * 每次 start：
- *
- * generation++
- *
- * 旧线程检测到 generation 不一致后自动退出。
- */
-var run_generation = 0;
-
-
-/*
- * 每个线程对应一个 AbortController。
- */
-var thread_controllers = [];
-
-
-/*
- * ------------------------------------------------------------
- * 国家代码
- * ------------------------------------------------------------
- *
- * 原项目国家显示依赖 CountryCode_Zh_cn。
- *
- * 使用 Intl.DisplayNames 后不需要继续维护几百个国家代码。
- */
-var CountryCode_Zh_cn = {
-    "US": "美国",
-    "CA": "加拿大",
-    "HK": "香港(中国)",
-    "TW": "台湾(中国)",
-    "SG": "新加坡",
-    "JP": "日本",
-    "KR": "韩国",
-    "AU": "澳大利亚",
-    "NZ": "新西兰",
-    "CN": "中国",
-    "GB": "英国",
-    "DE": "德国",
-    "FR": "法国",
-    "NL": "荷兰",
-    "IT": "意大利",
-    "ES": "西班牙",
-    "RU": "俄罗斯",
-    "IN": "印度",
-    "ID": "印度尼西亚",
-    "MY": "马来西亚",
-    "TH": "泰国",
-    "VN": "越南",
-    "PH": "菲律宾",
-    "BR": "巴西",
-    "AR": "阿根廷",
-    "MX": "墨西哥",
-    "TR": "土耳其",
-    "AE": "阿联酋",
-    "IL": "以色列",
-    "ZA": "南非",
-    "SE": "瑞典",
-    "CH": "瑞士",
-    "PL": "波兰",
-    "NO": "挪威",
-    "FI": "芬兰",
-    "DK": "丹麦",
-    "BE": "比利时",
-    "AT": "奥地利",
-    "IE": "爱尔兰",
-    "PT": "葡萄牙",
-    "GR": "希腊",
-    "CZ": "捷克",
-    "RO": "罗马尼亚",
-    "HU": "匈牙利",
-    "UA": "乌克兰",
-    "IL": "以色列",
-    "SA": "沙特阿拉伯",
-    "QA": "卡塔尔",
-    "EG": "埃及",
-    "PK": "巴基斯坦",
-    "BD": "孟加拉国"
-};
-
-
-/*
- * ============================================================
- * URL
- * ============================================================
- */
-
-function checkURL(URL) {
-
+async function start_thread(index) {
     try {
-
-        var obj =
-            new URL(URL);
-
-        return (
-            obj.protocol === "https:" &&
-            !!obj.hostname
-        );
-
-    } catch (e) {
-
-        return false;
-    }
-}
-
-
-/*
- * 构造代理 URL。
- *
- * TRAFFIC_PROXY 必须以：
- *
- * ?url=
- *
- * 结尾。
- */
-function buildProxyURL(url) {
-
-    if (
-        !TRAFFIC_PROXY ||
-        !TRAFFIC_PROXY.trim()
-    ) {
-        return "";
-    }
-
-
-    return (
-        TRAFFIC_PROXY +
-        encodeURIComponent(url)
-    );
-}
-
-
-/*
- * 当前真正用于 fetch 的地址。
- */
-function getRequestURL() {
-
-    if (
-        DOWNLOAD_MODE === "proxy"
-    ) {
-
-        return buildProxyURL(
-            testurl
-        );
-    }
-
-
-    return testurl;
-}
-
-
-/*
- * ============================================================
- * Worker 清理
- * ============================================================
- */
-
-function abortAllThreads() {
-
-    for (
-        var i = 0;
-        i < thread_controllers.length;
-        i++
-    ) {
-
-        try {
-
-            if (
-                thread_controllers[i]
-            ) {
-
-                thread_controllers[i].abort();
-            }
-
-        } catch (e) {}
-    }
-
-
-    thread_controllers = [];
-}
-
-
-/*
- * ============================================================
- * 流式下载线程
- * ============================================================
- *
- * 这里保留原 traffic-killer 的核心逻辑：
- *
- * fetch()
- *   ↓
- * response.body
- *   ↓
- * getReader()
- *   ↓
- * reader.read()
- *   ↓
- * value.byteLength
- *
- * 所以代理模式下仍然可以精确统计读取到的响应体字节数。
- *
- */
-
-async function start_thread(
-    index,
-    generation
-) {
-
-    while (
-        run &&
-        generation === run_generation
-    ) {
-
-        var controller =
-            new AbortController();
-
-
-        thread_controllers[index] =
-            controller;
-
-
-        try {
-
-            var requestURL =
-                getRequestURL();
-
-
-            if (!requestURL) {
-
-                throw new Error(
-                    "代理地址未配置"
-                );
-            }
-
-
-            var response =
-                await fetch(
-                    requestURL,
-                    {
-                        cache:
-                            "no-store",
-
-                        mode:
-                            "cors",
-
-                        redirect:
-                            "follow",
-
-                        referrerPolicy:
-                            "no-referrer",
-
-                        signal:
-                            controller.signal
-                    }
-                );
-
-
-            if (
-                !response ||
-                !response.ok
-            ) {
-
-                throw new Error(
-                    "HTTP " +
-                    (
-                        response
-                            ? response.status
-                            : "unknown"
-                    )
-                );
-            }
-
-
-            if (
-                !response.body
-            ) {
-
-                throw new Error(
-                    "响应没有 Body"
-                );
-            }
-
-
-            var reader =
-                response.body.getReader();
-
-
-            while (true) {
-
-                var result =
-                    await reader.read();
-
-
-                var value =
-                    result.value;
-
-
-                var done =
-                    result.done;
-
-
-                /*
-                 * 下载完成。
-                 *
-                 * 继续开始下一轮下载。
-                 */
-                if (done) {
-
-                    try {
-
-                        reader.releaseLock();
-
-                    } catch (e) {}
-
-
-                    break;
-                }
-
-
-                /*
-                 * 已停止。
-                 */
-                if (
-                    !run ||
-                    generation !== run_generation
-                ) {
-
-                    try {
-
-                        await reader.cancel();
-
-                    } catch (e) {}
-
-
-                    break;
-                }
-
-
-                /*
-                 * 统计实际读取到的响应体字节。
-                 *
-                 * Uint8Array：
-                 *
-                 * value.byteLength
-                 */
-                if (
-                    value &&
-                    value.byteLength
-                ) {
-
-                    thread_down[index] +=
-                        value.byteLength;
-                }
-            }
-
-
-        } catch (err) {
-
-            /*
-             * Abort 属于正常停止。
-             */
-            if (
-                !err ||
-                err.name !== "AbortError"
-            ) {
-
-                console.log(
-                    "[traffic-killer]",
-                    "thread:",
-                    index,
-                    "mode:",
-                    DOWNLOAD_MODE,
-                    err
-                );
-            }
-
-
-            /*
-             * 如果已经停止，
-             * 不再重试。
-             */
-            if (
-                !run ||
-                generation !== run_generation
-            ) {
-
+        const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
+        const reader = response.body.getReader();
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+                reader.cancel()
+                start_thread(index);
                 break;
             }
-
-
-            /*
-             * 当前模式失败。
-             *
-             * 不在这里偷偷切换模式，
-             * 避免 500 个线程同时切换。
-             *
-             * start() 决定整个运行周期使用 direct
-             * 还是 proxy。
-             */
-            await sleep(200);
+            if (!run) {
+                reader.cancel()
+                break
+            }
+            thread_down[index] += value.length
         }
-
-
-        /*
-         * 下一轮。
-         */
-        if (
-            run &&
-            generation === run_generation
-        ) {
-
-            await sleep(0);
-        }
-    }
-
-
-    thread_controllers[index] = null;
-}
-
-
-/*
- * 简单 sleep。
- */
-function sleep(ms) {
-
-    return new Promise(
-        function(resolve) {
-
-            setTimeout(
-                resolve,
-                ms
-            );
-        }
-    );
-}
-
-
-/*
- * ============================================================
- * CORS 检测
- * ============================================================
- *
- * 只读取第一块数据。
- */
-async function checkDirectStream() {
-
-    var controller =
-        new AbortController();
-
-
-    var timer =
-        setTimeout(
-            function() {
-
-                try {
-
-                    controller.abort();
-
-                } catch (e) {}
-
-            },
-            10000
-        );
-
-
-    try {
-
-        var response =
-            await fetch(
-                testurl,
-                {
-                    cache:
-                        "no-store",
-
-                    mode:
-                        "cors",
-
-                    redirect:
-                        "follow",
-
-                    referrerPolicy:
-                        "no-referrer",
-
-                    signal:
-                        controller.signal
-                }
-            );
-
-
-        if (
-            !response ||
-            !response.ok
-        ) {
-
-            throw new Error(
-                "HTTP " +
-                (
-                    response
-                        ? response.status
-                        : "unknown"
-                )
-            );
-        }
-
-
-        if (
-            !response.body
-        ) {
-
-            throw new Error(
-                "响应 Body 不可读取"
-            );
-        }
-
-
-        var reader =
-            response.body.getReader();
-
-
-        var result =
-            await reader.read();
-
-
-        if (
-            !result ||
-            !result.value ||
-            result.value.byteLength <= 0
-        ) {
-
-            throw new Error(
-                "资源响应异常"
-            );
-        }
-
-
-        try {
-
-            await reader.cancel();
-
-        } catch (e) {}
-
-
-        return true;
-
-
     } catch (err) {
+        console.log(err)
+        if (run) start_thread(index);
+    }
+}
+async function cale() {
+    var all_down_a = sum(thread_down)
+    now_speed = (all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000 / 1024 / 1024;
+    if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
+    if (visibl) document.getElementById("mbps").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 8000, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
+    if (!visibl) document.title = show((all_down_sum + all_down_a), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 0, 2, 2, 2]) + ' ' + show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 0, 2, 2, 2]);
+    lsat_all_down = all_down_a
+    lsat_date = new Date().getTime();
+    if (run) setTimeout(cale, 1000)
+    else {
+        var avg_speed = 1000 * (all_down_a) / (new Date().getTime() - start_time)
 
-        console.warn(
-            "[traffic-killer] direct CORS failed:",
-            err
-        );
-
-        return false;
-
-    } finally {
-
-        clearTimeout(
-            timer
-        );
-
-        try {
-
-            controller.abort();
-
-        } catch (e) {}
+        document.title = '流量杀手'
+        now_speed = 0
+        document.getElementById("speed").innerText = show((avg_speed), ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
+        document.getElementById("mbps").innerText = show((avg_speed) * 8, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
+        lsat_all_down = 0
+        document.getElementById('describe').innerText = '平均速度';
     }
 }
 
-
-/*
- * ============================================================
- * Proxy 检测
- * ============================================================
- *
- * 代理必须返回：
- *
- * Access-Control-Allow-Origin: *
- *
- * 并且 response.body 可读取。
- */
-async function checkProxyStream() {
-
-    var proxyURL =
-        buildProxyURL(
-            testurl
-        );
-
-
-    if (!proxyURL) {
-
-        console.warn(
-            "[traffic-killer] proxy not configured"
-        );
-
-        return false;
-    }
-
-
-    var controller =
-        new AbortController();
-
-
-    var timer =
-        setTimeout(
-            function() {
-
-                try {
-
-                    controller.abort();
-
-                } catch (e) {}
-            },
-            15000
-        );
-
-
-    try {
-
-        var response =
-            await fetch(
-                proxyURL,
-                {
-                    cache:
-                        "no-store",
-
-                    mode:
-                        "cors",
-
-                    redirect:
-                        "follow",
-
-                    referrerPolicy:
-                        "no-referrer",
-
-                    signal:
-                        controller.signal
-                }
-            );
-
-
-        if (
-            !response ||
-            !response.ok
-        ) {
-
-            throw new Error(
-                "Proxy HTTP " +
-                (
-                    response
-                        ? response.status
-                        : "unknown"
-                )
-            );
-        }
-
-
-        if (
-            !response.body
-        ) {
-
-            throw new Error(
-                "Proxy Body 不可读取"
-            );
-        }
-
-
-        var reader =
-            response.body.getReader();
-
-
-        var result =
-            await reader.read();
-
-
-        if (
-            !result ||
-            !result.value ||
-            result.value.byteLength <= 0
-        ) {
-
-            throw new Error(
-                "Proxy 返回空数据"
-            );
-        }
-
-
-        try {
-
-            await reader.cancel();
-
-        } catch (e) {}
-
-
-        return true;
-
-
-    } catch (err) {
-
-        console.error(
-            "[traffic-killer] proxy test failed:",
-            err
-        );
-
-        return false;
-
-    } finally {
-
-        clearTimeout(
-            timer
-        );
-
-        try {
-
-            controller.abort();
-
-        } catch (e) {}
+async function total() {
+    var all_down = sum(thread_down)
+    if (visibl) document.getElementById("total").innerText = show((all_down_sum + all_down), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
+    if ((all_down_sum + all_down) >= Maximum && Maximum != 0) stop()
+    if (run) setTimeout(total, 16)
+    else {
+        all_down_sum += all_down;
+        document.getElementById("total").innerText = show((all_down_sum), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     }
 }
-
-
-/*
- * ============================================================
- * 开始
- * ============================================================
- */
 
 async function start() {
-
-    /*
-     * 如果已经达到最大值，
-     * 从头重新累计。
-     */
-    if (
-        typeof Maximum !== "undefined" &&
-        all_down_sum >= Maximum &&
-        Maximum != 0
-    ) {
-
-        all_down_sum = 0;
+    if (all_down_sum >= Maximum && Maximum != 0) {
+        all_down_sum = 0
     }
-
-
-    /*
-     * 获取线程数。
-     */
-    maxtheard =
-        parseInt(
-            document
-                .getElementById("thread")
-                .value,
-            10
-        );
-
-
-    if (
-        isNaN(maxtheard) ||
-        maxtheard < 1
-    ) {
-
-        maxtheard = 1;
-    }
-
-
-    /*
-     * 500 是允许的最大逻辑线程。
-     */
-    if (
-        maxtheard > 500
-    ) {
-
-        maxtheard = 500;
-
-        document
-            .getElementById("thread")
-            .value = 500;
-    }
-
-
-    /*
-     * 获取测试 URL。
-     */
-    testurl =
-        document
-            .getElementById("link")
-            .value
-            .trim();
-
-
-    if (
-        testurl.length < 10
-    ) {
-
-        alert(
-            "链接不合法"
-        );
-
+    maxtheard = document.getElementById("thread").value;
+    testurl = document.getElementById("link").value;
+    if (testurl.length < 10) {
+        alert("链接不合法")
         return;
     }
-
-
-    /*
-     * 统一协议大小写。
-     */
-    testurl =
-        testurl.substring(
-            0,
-            5
-        ).toLowerCase() +
-        testurl.substring(
-            5
-        );
-
-
-    if (
-        !checkURL(testurl)
-    ) {
-
-        alert(
-            "链接不合法"
-        );
-
+    testurl = testurl.substring(0, 5).toLowerCase() + testurl.substring(5, testurl.length);
+    if (!checkURL(testurl)) {
+        alert("链接不合法")
         return;
     }
-
-
-    if (
-        testurl.startsWith(
-            "http://"
-        )
-    ) {
-
-        alert(
-            "由于浏览器安全限制，不支持http协议，请使用https协议"
-        );
-
+    if (testurl.startsWith("http://")) {
+        alert("由于浏览器安全限制，不支持http协议，请使用https协议")
         return;
     }
-
-
-    if (
-        !testurl.startsWith(
-            "https://"
-        )
-    ) {
-
-        alert(
-            "链接不合法"
-        );
-
+    if (!testurl.startsWith("https://")) {
+        alert("链接不合法")
         return;
     }
+    document.getElementById('do').innerText = '正在检验链接...';
+    document.getElementById('do').disabled = true;
 
-
-    var button =
-        document.getElementById(
-            "do"
-        );
-
-
-    var describe =
-        document.getElementById(
-            "describe"
-        );
-
-
-    button.innerText =
-        "正在检验链接...";
-
-
-    button.disabled =
-        true;
-
-
-    /*
-     * --------------------------------------------------------
-     * 第一优先：直接 CORS
-     * --------------------------------------------------------
-     */
-    DOWNLOAD_MODE =
-        "direct";
-
-
-    var directOK =
-        await checkDirectStream();
-
-
-    /*
-     * --------------------------------------------------------
-     * CORS 不可用
-     *
-     * 自动尝试代理。
-     * --------------------------------------------------------
-     */
-    if (!directOK) {
-
-        if (
-            !ENABLE_PROXY_FALLBACK
-        ) {
-
-            button.innerText =
-                "开始";
-
-            button.disabled =
-                false;
-
-            alert(
-                "该链接不支持浏览器跨域读取。"
-            );
-
-            return;
-        }
-
-
-        /*
-         * 检查代理。
-         */
-        DOWNLOAD_MODE =
-            "proxy";
-
-
-        describe.innerText =
-            "正在切换代理流模式";
-
-
-        var proxyOK =
-            await checkProxyStream();
-
-
-        if (!proxyOK) {
-
-            DOWNLOAD_MODE =
-                "direct";
-
-
-            button.innerText =
-                "开始";
-
-            button.disabled =
-                false;
-
-
-            alert(
-                "该链接无法直接读取，代理也不可用。\n\n" +
-                "请检查 main.js 顶部 TRAFFIC_PROXY 配置。"
-            );
-
-            return;
-        }
+    try {
+        const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
+        const reader = response.body.getReader();
+        const { value, done } = await reader.read();
+        if (value.length <= 0) throw "资源响应异常";
+        reader.cancel()
+    } catch (err) {
+        console.warn(err)
+        document.getElementById('do').innerText = '开始';
+        document.getElementById('do').disabled = false;
+        alert("该链接不可用，如果你能够正常访问该链接，那么很有可能是浏览器的跨域限制")
+        return
     }
-
-
-    /*
-     * 到这里已经确定整个运行周期使用的模式。
-     */
-    if (
-        DOWNLOAD_MODE === "proxy"
-    ) {
-
-        describe.innerText =
-            "实时速度（代理流）";
-
-    } else {
-
-        describe.innerText =
-            "实时速度";
+    document.getElementById('describe').innerText = '实时速度';
+    document.getElementById('do').innerText = '停止';
+    document.getElementById('do').disabled = false;
+    var num = maxtheard
+    lsat_all_down = 0
+    start_time = new Date().getTime()
+    run = true
+    thread_down = []
+    while (num--) {
+        thread_down[num] = 0
+        start_thread(num)
     }
-
-
-    button.innerText =
-        "停止";
-
-
-    button.disabled =
-        false;
-
-
-    /*
-     * 停止旧任务。
-     */
-    abortAllThreads();
-
-
-    run_generation++;
-
-
-    var generation =
-        run_generation;
-
-
-    lsat_all_down =
-        0;
-
-
-    lsat_date =
-        new Date().getTime();
-
-
-    start_time =
-        new Date().getTime();
-
-
-    run =
-        true;
-
-
-    thread_down =
-        [];
-
-
-    thread_controllers =
-        [];
-
-
-    /*
-     * 初始化线程。
-     *
-     * 使用异步启动，
-     * 防止 500 个线程在同一 JS tick 内瞬间创建。
-     */
-    for (
-        var i = 0;
-        i < maxtheard;
-        i++
-    ) {
-
-        thread_down[i] = 0;
-
-        thread_controllers[i] =
-            null;
-
-
-        /*
-         * 每个线程稍微错开。
-         *
-         * 对 500 线程手机浏览器更加友好。
-         */
-        (
-            function(index) {
-
-                setTimeout(
-                    function() {
-
-                        if (
-                            run &&
-                            generation === run_generation
-                        ) {
-
-                            start_thread(
-                                index,
-                                generation
-                            );
-                        }
-
-                    },
-                    Math.min(
-                        index * 2,
-                        1000
-                    )
-                );
-
-            }
-        )(i);
-    }
-
-
-    /*
-     * 启动速度计算。
-     */
-    cale();
-
-
-    /*
-     * 启动总流量统计。
-     */
-    total();
+    cale()
+    total()
 }
-
-
-/*
- * ============================================================
- * 停止
- * ============================================================
- */
 
 function stop() {
-
-    run =
-        false;
-
-
-    run_generation++;
-
-
-    abortAllThreads();
-
-
-    var button =
-        document.getElementById(
-            "do"
-        );
-
-
-    if (button) {
-
-        button.innerText =
-            "开始";
-
-        button.disabled =
-            false;
-    }
-
-
-    document.title =
-        "流量杀手";
+    run = false
+    document.getElementById('do').innerText = '开始';
 }
 
-
-/*
- * ============================================================
- * 求和
- * ============================================================
- */
-
 function sum(arr) {
-
     var s = 0;
-
-
-    for (
-        var i = 0;
-        i < arr.length;
-        i++
-    ) {
-
-        s +=
-            Number(
-                arr[i] || 0
-            );
+    for (var i = 0; i < arr.length; i++) {
+        s += arr[i];
     }
-
-
     return s;
 }
 
-
-/*
- * ============================================================
- * 开始/停止按钮
- * ============================================================
- */
-
 function botton_clicked() {
-
     if (run) {
-
         stop();
-
     } else {
-
         start();
     }
 }
 
-
-/*
- * ============================================================
- * 实时速度
- * ============================================================
- */
-
-async function cale() {
-
-    var now =
-        new Date().getTime();
-
-
-    var elapsed =
-        now -
-        lsat_date;
-
-
-    if (
-        elapsed <= 0
-    ) {
-
-        elapsed = 1;
-    }
-
-
-    var all_down_a =
-        sum(thread_down);
-
-
-    var delta =
-        all_down_a -
-        lsat_all_down;
-
-
-    /*
-     * 每秒 Bytes。
-     */
-    var bytesPerSecond =
-        delta /
-        elapsed *
-        1000;
-
-
-    /*
-     * MB/s。
-     */
-    now_speed =
-        bytesPerSecond /
-        1024 /
-        1024;
-
-
-    if (visibl) {
-
-        var speed =
-            document.getElementById(
-                "speed"
-            );
-
-
-        var mbps =
-            document.getElementById(
-                "mbps"
-            );
-
-
-        if (speed) {
-
-            speed.innerText =
-                show(
-                    bytesPerSecond,
-                    [
-                        "B/s",
-                        "KB/s",
-                        "MB/s",
-                        "GB/s",
-                        "TB/s",
-                        "PB/s"
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-
-
-        if (mbps) {
-
-            mbps.innerText =
-                show(
-                    bytesPerSecond * 8,
-                    [
-                        "Bps",
-                        "Kbps",
-                        "Mbps",
-                        "Gbps",
-                        "Tbps",
-                        "Pbps"
-                    ],
-                    [
-                        0,
-                        0,
-                        0,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-    }
-
-
-    /*
-     * 页面在后台：
-     * 用标题显示速度。
-     */
-    if (!visibl) {
-
-        document.title =
-            show(
-                all_down_sum +
-                all_down_a,
-                [
-                    "B",
-                    "KB",
-                    "MB",
-                    "GB",
-                    "TB",
-                    "PB"
-                ],
-                [
-                    0,
-                    0,
-                    0,
-                    2,
-                    2,
-                    2
-                ]
-            ) +
-            " " +
-            show(
-                bytesPerSecond,
-                [
-                    "B/s",
-                    "KB/s",
-                    "MB/s",
-                    "GB/s",
-                    "TB/s",
-                    "PB/s"
-                ],
-                [
-                    0,
-                    0,
-                    0,
-                    2,
-                    2,
-                    2
-                ]
-            );
-    }
-
-
-    lsat_all_down =
-        all_down_a;
-
-
-    lsat_date =
-        now;
-
-
-    if (run) {
-
-        setTimeout(
-            cale,
-            1000
-        );
-
-        return;
-    }
-
-
-    /*
-     * 停止后计算平均速度。
-     */
-    var totalElapsed =
-        now -
-        start_time;
-
-
-    if (
-        totalElapsed <= 0
-    ) {
-
-        totalElapsed = 1;
-    }
-
-
-    var avg_speed =
-        1000 *
-        all_down_a /
-        totalElapsed;
-
-
-    now_speed = 0;
-
-
-    document.title =
-        "流量杀手";
-
-
-    if (visibl) {
-
-        var speedEnd =
-            document.getElementById(
-                "speed"
-            );
-
-
-        var mbpsEnd =
-            document.getElementById(
-                "mbps"
-            );
-
-
-        if (speedEnd) {
-
-            speedEnd.innerText =
-                show(
-                    avg_speed,
-                    [
-                        "B/s",
-                        "KB/s",
-                        "MB/s",
-                        "GB/s",
-                        "TB/s",
-                        "PB/s"
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-
-
-        if (mbpsEnd) {
-
-            mbpsEnd.innerText =
-                show(
-                    avg_speed * 8,
-                    [
-                        "Bps",
-                        "Kbps",
-                        "Mbps",
-                        "Gbps",
-                        "Tbps",
-                        "Pbps"
-                    ],
-                    [
-                        0,
-                        0,
-                        0,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-
-
-        var describe =
-            document.getElementById(
-                "describe"
-            );
-
-
-        if (describe) {
-
-            describe.innerText =
-                DOWNLOAD_MODE === "proxy"
-                    ? "平均速度（代理流）"
-                    : "平均速度";
-        }
-    }
-
-
-    lsat_all_down = 0;
-}
-
-
-/*
- * ============================================================
- * 总流量
- * ============================================================
- */
-
-async function total() {
-
-    var all_down =
-        sum(thread_down);
-
-
-    var currentTotal =
-        all_down_sum +
-        all_down;
-
-
-    if (visibl) {
-
-        var totalEl =
-            document.getElementById(
-                "total"
-            );
-
-
-        if (totalEl) {
-
-            totalEl.innerText =
-                show(
-                    currentTotal,
-                    [
-                        "B",
-                        "KB",
-                        "MB",
-                        "GB",
-                        "TB",
-                        "PB"
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
-    }
-
-
-    /*
-     * Maximum 由 index.html 定义。
-     */
-    if (
-        typeof Maximum !== "undefined" &&
-        (
-            currentTotal >= Maximum &&
-            Maximum != 0
-        )
-    ) {
-
-        stop();
-
-
-        return;
-    }
-
-
-    if (run) {
-
-        setTimeout(
-            total,
-            16
-        );
-
-        return;
-    }
-
-
-    /*
-     * 停止时把这一轮累计进去。
-     */
-    all_down_sum +=
-        all_down;
-
-
-    if (visibl) {
-
-        var totalEnd =
-            document.getElementById(
-                "total"
-            );
-
-
-        if (totalEnd) {
-
-            totalEnd.innerText =
-                show(
-                    all_down_sum,
-                    [
-                        "B",
-                        "KB",
-                        "MB",
-                        "GB",
-                        "TB",
-                        "PB"
-                    ],
-                    [
-                        0,
-                        0,
-                        1,
-                        2,
-                        2,
-                        2
-                    ]
-                );
-        }
+function checkURL(URL) {
+    var str = URL;
+    var Expression = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
+    var objExp = new RegExp(Expression);
+    if (objExp.test(str) == true) {
+        return true;
+    } else {
+        return false;
     }
 }
 
-
-/*
- * ============================================================
- * 国内 IP
- * ============================================================
- */
-
-var cnip = "";
-
+var cnip = ''
 
 function ipcn() {
-
     if (visibl) {
-
-        fetch(
-            "https://forge.speedtest.cn/api/location/info",
-            {
-                referrerPolicy:
-                    "no-referrer"
-            }
-        )
-        .then(
-            function(response) {
-
-                return response.json();
-            }
-        )
-        .then(
-            function(data) {
-
-                var tag =
-                    document.getElementById(
-                        "ipcn"
-                    );
-
-
-                if (!tag) {
-                    return;
+        fetch('https://forge.speedtest.cn/api/location/info', { referrerPolicy: 'no-referrer' })
+            .then(response => response.json())
+            .then(data => {
+                var tag = document.getElementById("ipcn")
+                tag.innerText = data['ip'] + ' ' + data['province'] + ' ' + data['city'] + ' ' + data['distinct'] + ' ' + data['isp']
+                if (data['ip'] !== cnip) {
+                    tag.style.color = ''
+                    ckip(data['ip'], tag)
                 }
-
-
-                tag.innerText =
-                    data["ip"] +
-                    " " +
-                    data["province"] +
-                    " " +
-                    data["city"] +
-                    " " +
-                    data["distinct"] +
-                    " " +
-                    data["isp"];
-
-
-                if (
-                    data["ip"] !== cnip
-                ) {
-
-                    tag.style.color =
-                        "";
-
-                    ckip(
-                        data["ip"],
-                        tag
-                    );
-                }
-
-
-                cnip =
-                    data["ip"];
-            }
-        )
-        .catch(
-            function() {}
-        );
+                cnip = data['ip'];
+            });
     }
-
-
-    setTimeout(
-        ipcn,
-        5000
-    );
+    setTimeout(ipcn, 5000)
 }
-
-
-/*
- * ============================================================
- * 全球 IP
- * ============================================================
- */
-
-var gbip = "";
-
+var gbip = ""
 
 function ipgb() {
-
     if (visibl) {
-
-        fetch(
-            "https://api-ipv4.ip.sb/geoip",
-            {
-                referrerPolicy:
-                    "no-referrer"
-            }
-        )
-        .then(
-            function(response) {
-
-                return response.json();
-            }
-        )
-        .then(
-            function(data) {
-
-                var tag =
-                    document.getElementById(
-                        "ipgb"
-                    );
-
-
-                if (!tag) {
-                    return;
+        fetch('https://api-ipv4.ip.sb/geoip', { referrerPolicy: 'no-referrer' })
+            .then(response => response.json())
+            .then(data => {
+                var tag = document.getElementById("ipgb")
+                tag.innerText = data['ip'] + ' ' + CountryCode_Zh_cn[data['country_code']] + ' ' + data['isp']
+                if (data['ip'] !== gbip) {
+                    tag.style.color = ''
+                    ckip(data['ip'], tag)
                 }
-
-
-                var country =
-                    CountryCode_Zh_cn[
-                        data["country_code"]
-                    ] ||
-                    data["country_code"] ||
-                    "";
-
-
-                /*
-                 * 如果浏览器支持 Intl.DisplayNames，
-                 * 尝试显示完整中文国家名称。
-                 */
-                try {
-
-                    if (
-                        !CountryCode_Zh_cn[
-                            data["country_code"]
-                        ] &&
-                        typeof Intl !==
-                            "undefined" &&
-                        Intl.DisplayNames
-                    ) {
-
-                        var dn =
-                            new Intl.DisplayNames(
-                                [
-                                    "zh-CN"
-                                ],
-                                {
-                                    type:
-                                        "region"
-                                }
-                            );
-
-
-                        country =
-                            dn.of(
-                                data[
-                                    "country_code"
-                                ]
-                            );
-                    }
-
-                } catch (e) {}
-
-
-                tag.innerText =
-                    data["ip"] +
-                    " " +
-                    country +
-                    " " +
-                    data["isp"];
-
-
-                if (
-                    data["ip"] !== gbip
-                ) {
-
-                    tag.style.color =
-                        "";
-
-                    ckip(
-                        data["ip"],
-                        tag
-                    );
-                }
-
-
-                gbip =
-                    data["ip"];
-            }
-        )
-        .catch(
-            function() {}
-        );
+                gbip = data['ip'];
+            });
     }
-
-
-    setTimeout(
-        ipgb,
-        refresh_lay
-    );
+    setTimeout(ipgb, refresh_lay)
 }
 
-
-/*
- * ============================================================
- * 国内延迟
- * ============================================================
- */
 
 function laycn() {
-
     if (visibl) {
-
-        var start_ti =
-            new Date().getTime();
-
-
-        fetch(
-            "https://connectivitycheck.platform.hicloud.com/generate_204",
-            {
-                method:
-                    "HEAD",
-
-                cache:
-                    "no-store",
-
-                mode:
-                    "no-cors",
-
-                referrerPolicy:
-                    "no-referrer"
-            }
-        )
-        .then(
-            function() {
-
-                var lay =
-                    new Date().getTime() -
-                    start_ti;
-
-
-                now_local_ping =
-                    lay;
-
-
-                var el =
-                    document.getElementById(
-                        "laycn"
-                    );
-
-
-                if (el) {
-
-                    el.innerText =
-                        lay +
-                        "ms";
-                }
-            }
-        )
-        .catch(
-            function() {
-
-                var el =
-                    document.getElementById(
-                        "laycn"
-                    );
-
-
-                if (el) {
-
-                    el.innerText =
-                        "-ms";
-                }
-            }
-        );
+        var start_ti = new Date().getTime();
+        fetch("https://connectivitycheck.platform.hicloud.com/generate_204", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                var lay = new Date().getTime() - start_ti;
+                now_local_ping = lay
+                document.getElementById("laycn").innerText = lay + 'ms';
+            })
+            .catch(error => document.getElementById("laycn").innerText = '-ms');
     }
-
-
-    setTimeout(
-        laycn,
-        1000
-    );
+    setTimeout(laycn, 1000)
 }
-
-
-/*
- * ============================================================
- * 全球延迟
- * ============================================================
- */
 
 function laygb() {
-
     if (visibl) {
-
-        var start_ti =
-            new Date().getTime();
-
-
-        fetch(
-            "https://cp.cloudflare.com/",
-            {
-                method:
-                    "HEAD",
-
-                cache:
-                    "no-store",
-
-                mode:
-                    "no-cors",
-
-                referrerPolicy:
-                    "no-referrer"
-            }
-        )
-        .then(
-            function() {
-
-                var lay =
-                    new Date().getTime() -
-                    start_ti;
-
-
-                now_global_ping =
-                    lay;
-
-
-                var el =
-                    document.getElementById(
-                        "laygb"
-                    );
-
-
-                if (el) {
-
-                    el.innerText =
-                        lay +
-                        "ms";
-                }
-            }
-        )
-        .catch(
-            function() {
-
-                var el =
-                    document.getElementById(
-                        "laygb"
-                    );
-
-
-                if (el) {
-
-                    el.innerText =
-                        "-ms";
-                }
-            }
-        );
+        var start_ti = new Date().getTime();
+        fetch("	https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                var lay = new Date().getTime() - start_ti;
+                now_global_ping = lay
+                document.getElementById("laygb").innerText = lay + 'ms';
+            })
+            .catch(error => document.getElementById("laygb").innerText = '-ms');
     }
-
-
-    setTimeout(
-        laygb,
-        1000
-    );
+    setTimeout(laygb, 1000)
 }
-
-
-/*
- * ============================================================
- * 海外连通性
- * ============================================================
- */
 
 function ckbl() {
-
     if (visibl) {
-
-        var controller =
-            new AbortController();
-
-
-        setTimeout(
-            function() {
-
-                try {
-
-                    controller.abort();
-
-                } catch (e) {}
-            },
-            2000
-        );
-
-
-        fetch(
-            "https://twitter.com/",
-            {
-                signal:
-                    controller.signal,
-
-                method:
-                    "HEAD",
-
-                cache:
-                    "no-store",
-
-                mode:
-                    "no-cors",
-
-                referrerPolicy:
-                    "no-referrer"
-            }
-        )
-        .then(
-            function() {
-
-                var el =
-                    document.getElementById(
-                        "laygb"
-                    );
-
-
-                if (el) {
-
-                    el.style.color =
-                        "green";
-                }
-            }
-        )
-        .catch(
-            function() {
-
-                var el =
-                    document.getElementById(
-                        "laygb"
-                    );
-
-
-                if (el) {
-
-                    el.style.color =
-                        "red";
-                }
-            }
-        );
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 2000);
+        fetch("https://twitter.com/", { signal: controller.signal, method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+            .then(function() {
+                document.getElementById("laygb").style.color = "green";
+            })
+            .catch(error => document.getElementById("laygb").style.color = "red");
     }
-
-
-    setTimeout(
-        ckbl,
-        1000
-    );
+    setTimeout(ckbl, 1000)
 }
 
-
-/*
- * ============================================================
- * IP ISP 检测
- * ============================================================
- */
-
-function ckip(
-    ip,
-    tag
-) {
-
-    if (!checkIP) {
-        return;
+function ckip(ip, tag) {
+    if (checkIP) {
+        fetch('https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' + ip)
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.input, data.data.country, data.data.city, data.data.asn.name, data.data.company.type)
+                if (data.data.company.type === "isp") tag.style.color = "green"
+            });
     }
-
-
-    fetch(
-        "https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F" +
-        ip
-    )
-    .then(
-        function(response) {
-
-            return response.json();
-        }
-    )
-    .then(
-        function(data) {
-
-            try {
-
-                console.log(
-                    data.input,
-                    data.data.country,
-                    data.data.city,
-                    data.data.asn.name,
-                    data.data.company.type
-                );
-
-
-                if (
-                    data.data.company.type ===
-                    "isp"
-                ) {
-
-                    tag.style.color =
-                        "green";
-                }
-
-            } catch (e) {}
-        }
-    )
-    .catch(
-        function() {}
-    );
 }
 
+ipcn()
+ipgb()
+laycn()
+laygb()
+ckbl()
 
-/*
- * ============================================================
- * 初始化
- * ============================================================
- */
-
-ipcn();
-
-ipgb();
-
-laycn();
-
-laygb();
-
-ckbl();
-
-
-/*
- * ============================================================
- * 页面前后台
- * ============================================================
- */
-
-document.addEventListener(
-    "visibilitychange",
-    function() {
-
-        var state =
-            document.visibilityState;
-
-
-        if (
-            state === "hidden"
-        ) {
-
-            visibl = false;
-
-
-            var switchEl =
-                document.getElementById(
-                    "customSwitch2"
-                );
-
-
-            if (
-                run &&
-                switchEl &&
-                !switchEl.checked
-            ) {
-
-                botton_clicked();
-            }
-        }
-
-
-        if (
-            state === "visible"
-        ) {
-
-            visibl = true;
-
-            document.title =
-                "流量杀手";
-        }
+document.addEventListener("visibilitychange", function() {
+    var string = document.visibilityState
+    if (string === 'hidden') {
+        visibl = false
+        if (run && !document.getElementById("customSwitch2").checked) botton_clicked();
     }
-);
+    if (string === 'visible') {
+        visibl = true
+        document.title = "流量杀手"
+    }
+});
 
 
-/*
- * ============================================================
- * ECharts
- * ============================================================
- */
-
-var chartDom =
-    document.getElementById(
-        "dv"
-    );
 
 
-var myChart =
-    echarts.init(
-        chartDom
-    );
-
-
+var chartDom = document.getElementById('dv');
+var myChart = echarts.init(chartDom);
 var option;
 
-
 option = {
-
     tooltip: {
-
-        trigger:
-            "axis",
-
+        trigger: 'axis',
         axisPointer: {
-
-            type:
-                "cross",
-
+            type: 'cross',
             label: {
-
-                backgroundColor:
-                    "#6a7985"
+                backgroundColor: '#6a7985'
             }
         }
     },
-
-
     legend: {
-
-        data: [
-            "Speed",
-            "Local Ping",
-            "Global Ping"
-        ]
+        data: ['Speed', 'Local Ping', 'Global Ping']
     },
-
-
     toolbox: {
-
         feature: {
-
             saveAsImage: {}
         }
     },
-
-
     grid: {
-
-        left:
-            "3%",
-
-        right:
-            "4%",
-
-        bottom:
-            "3%",
-
-        containLabel:
-            true
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
     },
-
-
     xAxis: [{
-
-        type:
-            "category",
-
-        name:
-            "时间(s)",
-
-        boundaryGap:
-            false
+        type: 'category',
+        name: "时间(s)",
+        boundaryGap: false,
     }],
-
-
     yAxis: [{
-
-        type:
-            "value",
-
-        name:
-            "延迟(ms)",
-
-        splitLine: {
-
-            show:
-                false
-        }
-
-    }, {
-
-        type:
-            "value",
-
-        name:
-            "速率(MB/s)",
-
-        splitLine: {
-
-            show:
-                false
-        }
-    }],
-
-
-    series: [{
-
-        name:
-            "速率",
-
-        type:
-            "line",
-
-        stack:
-            "Total",
-
-        yAxisIndex:
-            1,
-
-        areaStyle: {},
-
-        emphasis: {
-
-            focus:
-                "series"
+            type: 'value',
+            name: "延迟(ms)",
+            splitLine: {
+                show: false
+            }
         },
-
-        data: [{
-
-            name:
-                new Date(),
-
-            value:
-                now_speed
-        }]
-
-    }, {
-
-        name:
-            "延迟",
-
-        type:
-            "line",
-
-        data: [{
-
-            name:
-                new Date(),
-
-            value:
-                now_global_ping
-        }]
-    }]
+        {
+            type: 'value',
+            name: "速率(MB/s)",
+            splitLine: {
+                show: false
+            }
+        }
+    ],
+    series: [{
+            name: '速率',
+            type: 'line',
+            stack: 'Total',
+            yAxisIndex: 1,
+            areaStyle: {},
+            emphasis: {
+                focus: 'series'
+            },
+            data: [{
+                name: new Date(),
+                value: now_global_ping
+            }]
+        },
+        {
+            name: '延迟',
+            type: 'line',
+            data: [{
+                name: new Date(),
+                value: now_global_ping
+            }]
+        }
+    ]
 };
 
-
-if (myChart) {
-
-    myChart.setOption(
-        option
-    );
-}
-
-
-/*
- * ============================================================
- * 图表刷新
- * ============================================================
- */
+option && myChart.setOption(option);
 
 function dv() {
-
-    if (
-        visibl &&
-        myChart
-    ) {
-
-        var now =
-            new Date();
-
-
-        option.series[0]
-            .data
-            .push({
-
-                name:
-                    now.toString(),
-
+    if (visibl) {
+        now = new Date()
+        option.series[0].data.push({
+                name: now.toString(),
                 value: [
-                    now.getTime(),
-                    Number(
-                        now_speed.toFixed(
-                            1
-                        )
-                    )
+                    now.getTime(), now_speed.toFixed(1)
                 ]
-            });
-
-
-        option.series[1]
-            .data
-            .push({
-
-                name:
-                    now.toString(),
-
+            })
+            // option.series[0].data.shift()
+        option.series[1].data.push({
+                name: now.toString(),
                 value: [
-                    now.getTime(),
-                    now_local_ping
+                    now.getTime(), now_local_ping
                 ]
-            });
-
-
+            })
+            // option.series[1].data.shift()
+            // option.series[2].data.push({
+            //         name: now.toString(),
+            //         value: [
+            //             now.getTime(), now_global_ping
+            //         ]
+            //     })
+            // option.series[2].data.shift()
         myChart.setOption({
-            series:
-                option.series
+            series: option.series
         });
     }
-
-
-    setTimeout(
-        dv,
-        1000
-    );
+    setTimeout(dv, 1000)
 }
 
-
-dv();
-
-
-/*
- * ============================================================
- * 调试信息
- * ============================================================
- */
-
-console.log(
-    "[traffic-killer] loaded"
-);
-
-console.log(
-    "[traffic-killer] proxy:",
-    TRAFFIC_PROXY || "(未配置)"
-);
+dv()
