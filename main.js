@@ -15,6 +15,13 @@ var refresh_lay = 5000
 // 此时流量照常传输，但无法统计精确字节数，只能计数完成请求数
 var blindMode = false
 var blind_total_req = 0
+// 估算模式：单个文件大小（字节），>0 时按“请求数×文件大小”估算流量
+var blind_file_size = 0
+// 用于探测文件大小的公共 CORS 代理（只读响应头，不下载正文）
+var size_proxies = [
+    'https://corsproxy.io/?url=',
+    'https://api.allorigins.win/raw?url='
+];
 
 async function start_thread(index) {
     if (blindMode) {
@@ -65,7 +72,7 @@ async function cale() {
         else {
             document.getElementById("speed").innerText = '—';
             document.getElementById("mbps").innerText = '—';
-            document.getElementById('describe').innerText = '兼容模式（跨域）';
+            document.getElementById('describe').innerText = blind_label();
             document.title = '流量杀手'
         }
         return
@@ -90,9 +97,18 @@ async function cale() {
 
 async function total() {
     if (blindMode) {
-        // 兼容模式：按完成请求数显示；流量上限（按字节）无法适用，跳过自动停止
-        if (visibl) document.getElementById("total").innerText = '已完成 ' + blind_total_req + ' 次请求';
+        // 兼容模式：有文件大小时按“请求数×文件大小”估算流量并标注，否则只计数请求数
+        var est = blind_file_size > 0 ? blind_total_req * blind_file_size : 0
+        if (visibl) document.getElementById("total").innerText = est > 0
+            ? '≈' + show(all_down_sum + est, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）'
+            : '已完成 ' + blind_total_req + ' 次请求';
+        // 估算模式下流量上限按估算字节生效
+        if (est > 0 && Maximum != 0 && (all_down_sum + est) >= Maximum) stop()
         if (run) setTimeout(total, 16)
+        else if (est > 0) {
+            all_down_sum += est;
+            document.getElementById("total").innerText = '≈' + show(all_down_sum, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）';
+        }
         return
     }
     var all_down = sum(thread_down)
@@ -103,6 +119,49 @@ async function total() {
         all_down_sum += all_down;
         document.getElementById("total").innerText = show((all_down_sum), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     }
+}
+
+// 解析用户输入的文件大小，如 "100MB"、"1.5GB"、"1024"（字节），非法返回 0
+function parse_size(s) {
+    if (!s) return 0
+    var m = String(s).trim().match(/^([\d.]+)\s*([kmgt]?b?)?$/i)
+    if (!m) return 0
+    var num = parseFloat(m[1])
+    if (isNaN(num) || num <= 0) return 0
+    var u = (m[2] || '').toUpperCase()
+    var mult = 1
+    if (u[0] === 'K') mult = 1024
+    else if (u[0] === 'M') mult = 1048576
+    else if (u[0] === 'G') mult = 1073741824
+    else if (u[0] === 'T') mult = 1099511627776
+    return Math.floor(num * mult)
+}
+
+// 经公共 CORS 代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
+async function probe_file_size(url) {
+    for (var i = 0; i < size_proxies.length; i++) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, 6000);
+        try {
+            var res = await fetch(size_proxies[i] + encodeURIComponent(url), {
+                signal: ctrl.signal, referrerPolicy: 'no-referrer'
+            });
+            clearTimeout(timer);
+            var len = res.headers.get('content-length');
+            try { if (res.body) res.body.cancel(); } catch (e) {}
+            if (res.ok && len) {
+                var n = parseInt(len, 10)
+                if (!isNaN(n) && n > 0) return n
+            }
+        } catch (e) {
+            clearTimeout(timer);
+        }
+    }
+    return 0;
+}
+
+function blind_label() {
+    return blind_file_size > 0 ? '兼容模式（流量估算）' : '兼容模式（跨域）'
 }
 
 async function start() {
@@ -154,13 +213,22 @@ async function start() {
             console.warn(err)
         }
     }
+    if (blindMode) {
+        blind_file_size = 0
+        // 估算模式：先尝试自动获取文件大小，失败则请用户手动输入
+        try { blind_file_size = await probe_file_size(testurl) } catch (e) {}
+        if (!blind_file_size) {
+            var input = prompt('已进入兼容模式（跨域限制，无法精确统计流量）。\n请输入该文件大小以估算流量（如 100MB、1.5GB），\n留空则只计数完成请求数：', '')
+            blind_file_size = parse_size(input)
+        }
+    }
     if (!linkOk) {
         document.getElementById('do').innerText = '开始';
         document.getElementById('do').disabled = false;
         alert("该链接不可用，请检查链接是否正确、网络是否通畅")
         return
     }
-    document.getElementById('describe').innerText = blindMode ? '兼容模式（跨域）' : '实时速度';
+    document.getElementById('describe').innerText = blindMode ? blind_label() : '实时速度';
     document.getElementById('do').innerText = '停止';
     document.getElementById('do').disabled = false;
     var num = maxtheard
