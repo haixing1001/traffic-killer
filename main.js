@@ -320,45 +320,6 @@ function ipgb() {
 }
 
 
-function laycn() {
-    if (visibl) {
-        var start_ti = new Date().getTime();
-        fetch("https://connectivitycheck.platform.hicloud.com/generate_204", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
-            .then(function() {
-                var lay = new Date().getTime() - start_ti;
-                document.getElementById("laycn").innerText = lay + 'ms';
-            })
-            .catch(error => document.getElementById("laycn").innerText = '-ms');
-    }
-    setTimeout(laycn, 1000)
-}
-
-function laygb() {
-    if (visibl) {
-        var start_ti = new Date().getTime();
-        fetch("https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
-            .then(function() {
-                var lay = new Date().getTime() - start_ti;
-                document.getElementById("laygb").innerText = lay + 'ms';
-            })
-            .catch(error => document.getElementById("laygb").innerText = '-ms');
-    }
-    setTimeout(laygb, 1000)
-}
-
-function ckbl() {
-    if (visibl) {
-        const controller = new AbortController();
-        setTimeout(() => controller.abort(), 2000);
-        fetch("https://twitter.com/", { signal: controller.signal, method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
-            .then(function() {
-                document.getElementById("laygb").style.color = "green";
-            })
-            .catch(error => document.getElementById("laygb").style.color = "red");
-    }
-    setTimeout(ckbl, 1000)
-}
-
 function ckip(ip, tag) {
     if (checkIP) {
         fetch('https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' + ip)
@@ -374,9 +335,6 @@ function ckip(ip, tag) {
 
 ipcn()
 ipgb()
-laycn()
-laygb()
-ckbl()
 
 document.addEventListener("visibilitychange", function() {
     var string = document.visibilityState
