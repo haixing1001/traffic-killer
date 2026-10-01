@@ -34,7 +34,7 @@ async function start_thread(index) {
         }
     } catch (err) {
         console.log(err)
-        if (run) start_thread(index);
+        if (run) setTimeout(() => start_thread(index), 1500);
     }
 }
 async function cale() {
@@ -163,14 +163,16 @@ function ipcn() {
         fetch('https://forge.speedtest.cn/api/location/info', { referrerPolicy: 'no-referrer' })
             .then(response => response.json())
             .then(data => {
+                if (!data || !data['ip']) return;
                 var tag = document.getElementById("ipcn")
-                tag.innerText = data['ip'] + ' ' + data['province'] + ' ' + data['city'] + ' ' + data['distinct'] + ' ' + data['isp']
+                tag.innerText = data['ip'] + ' ' + (data['province'] || '') + ' ' + (data['city'] || '') + ' ' + (data['distinct'] || '') + ' ' + (data['isp'] || '')
                 if (data['ip'] !== cnip) {
                     tag.style.color = ''
                     ckip(data['ip'], tag)
                 }
                 cnip = data['ip'];
-            });
+            })
+            .catch(() => {});
     }
     setTimeout(ipcn, 5000)
 }
@@ -181,14 +183,16 @@ function ipgb() {
         fetch('https://api-ipv4.ip.sb/geoip', { referrerPolicy: 'no-referrer' })
             .then(response => response.json())
             .then(data => {
+                if (!data || !data['ip']) return;
                 var tag = document.getElementById("ipgb")
-                tag.innerText = data['ip'] + ' ' + CountryCode_Zh_cn[data['country_code']] + ' ' + data['isp']
+                tag.innerText = data['ip'] + ' ' + (CountryCode_Zh_cn[data['country_code']] || data['country_code'] || '') + ' ' + (data['isp'] || '')
                 if (data['ip'] !== gbip) {
                     tag.style.color = ''
                     ckip(data['ip'], tag)
                 }
                 gbip = data['ip'];
-            });
+            })
+            .catch(() => {});
     }
     setTimeout(ipgb, refresh_lay)
 }
@@ -211,7 +215,7 @@ function laycn() {
 function laygb() {
     if (visibl) {
         var start_ti = new Date().getTime();
-        fetch("	https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
+        fetch("https://cp.cloudflare.com/", { method: "HEAD", cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
             .then(function() {
                 var lay = new Date().getTime() - start_ti;
                 now_global_ping = lay
@@ -240,9 +244,11 @@ function ckip(ip, tag) {
         fetch('https://down.ljxnet.cn/?headers=%7B%22referer%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%2C%22origin%22%3A%22https%3A%2F%2Fipinfo.io%2F%22%7D&url=https%3A%2F%2Fipinfo.io%2Fwidget%2Fdemo%2F' + ip)
             .then(response => response.json())
             .then(data => {
-                console.log(data.input, data.data.country, data.data.city, data.data.asn.name, data.data.company.type)
-                if (data.data.company.type === "isp") tag.style.color = "green"
-            });
+                if (!data || !data.data) return;
+                console.log(data.input, data.data.country, data.data.city, data.data.asn && data.data.asn.name, data.data.company && data.data.company.type)
+                if (data.data.company && data.data.company.type === "isp") tag.style.color = "green"
+            })
+            .catch(() => {});
     }
 }
 
@@ -268,7 +274,13 @@ document.addEventListener("visibilitychange", function() {
 
 
 var chartDom = document.getElementById('dv');
-var myChart = echarts.init(chartDom);
+var myChart = null;
+if (typeof echarts !== 'undefined' && chartDom) {
+    myChart = echarts.init(chartDom);
+} else {
+    console.warn('ECharts 加载失败，图表功能不可用');
+    if (chartDom) chartDom.innerText = '图表组件加载失败，请检查网络后刷新重试';
+}
 var option;
 
 option = {
@@ -282,7 +294,7 @@ option = {
         }
     },
     legend: {
-        data: ['Speed', 'Local Ping', 'Global Ping']
+        data: ['速率', '延迟']
     },
     toolbox: {
         feature: {
@@ -296,8 +308,8 @@ option = {
         containLabel: true
     },
     xAxis: [{
-        type: 'category',
-        name: "时间(s)",
+        type: 'time',
+        name: "时间",
         boundaryGap: false,
     }],
     yAxis: [{
@@ -324,48 +336,25 @@ option = {
             emphasis: {
                 focus: 'series'
             },
-            data: [{
-                name: new Date(),
-                value: now_global_ping
-            }]
+            data: []
         },
         {
             name: '延迟',
             type: 'line',
-            data: [{
-                name: new Date(),
-                value: now_global_ping
-            }]
+            data: []
         }
     ]
 };
 
-option && myChart.setOption(option);
+if (myChart) myChart.setOption(option);
 
 function dv() {
-    if (visibl) {
-        now = new Date()
-        option.series[0].data.push({
-                name: now.toString(),
-                value: [
-                    now.getTime(), now_speed.toFixed(1)
-                ]
-            })
-            // option.series[0].data.shift()
-        option.series[1].data.push({
-                name: now.toString(),
-                value: [
-                    now.getTime(), now_local_ping
-                ]
-            })
-            // option.series[1].data.shift()
-            // option.series[2].data.push({
-            //         name: now.toString(),
-            //         value: [
-            //             now.getTime(), now_global_ping
-            //         ]
-            //     })
-            // option.series[2].data.shift()
+    if (visibl && myChart) {
+        var now = new Date()
+        option.series[0].data.push([now.getTime(), parseFloat(now_speed.toFixed(1))])
+        option.series[1].data.push([now.getTime(), now_local_ping])
+        if (option.series[0].data.length > 600) option.series[0].data.shift()
+        if (option.series[1].data.length > 600) option.series[1].data.shift()
         myChart.setOption({
             series: option.series
         });
