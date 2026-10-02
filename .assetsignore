@@ -1,6 +1,0 @@
-worker.js
-wrangler.toml
-.assetsignore
-.wrangler
-.git
-.gitignore
