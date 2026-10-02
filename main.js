@@ -17,11 +17,11 @@ var blindMode = false
 var blind_total_req = 0
 // 估算模式：单个文件大小（字节），>0 时按“请求数×文件大小”估算流量
 var blind_file_size = 0
-// 用于探测文件大小的公共 CORS 代理（只读响应头，不下载正文）
-var size_proxies = [
-    'https://corsproxy.io/?url=',
-    'https://api.allorigins.win/raw?url='
-];
+// 公共 CORS 代理已全部移除（实测均不可用/不稳定）。
+// 兼容模式自动探测文件大小只走用户自建代理（cookie 配置，见 index.html 的
+// setSizeProxy；部署代码见仓库 worker.js，Cloudflare Workers 二合一）
+// 或 known_file_size 已知大小，其余情况回退手动输入。
+var size_proxies = [];
 // 已知文件大小的链接（字节）：命中则直接采用，跳过自动探测与手动输入
 var known_file_size = {
     'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824 // 移动云手机
@@ -141,13 +141,16 @@ function parse_size(s) {
     return Math.floor(num * mult)
 }
 
-// 经公共 CORS 代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
+// 经自建 CORS 代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
 async function probe_file_size(url) {
-    for (var i = 0; i < size_proxies.length; i++) {
+    // 只使用用户自建代理（cookie 中配置）；未配置则直接回退手动输入
+    var proxies = size_proxies.slice();
+    try { var cp = getCookie('sizeProxy'); if (cp) proxies.unshift(cp); } catch (e) {}
+    for (var i = 0; i < proxies.length; i++) {
         const ctrl = new AbortController();
-        const timer = setTimeout(function () { ctrl.abort(); }, 6000);
+        const timer = setTimeout(function () { ctrl.abort(); }, 8000);
         try {
-            var res = await fetch(size_proxies[i] + encodeURIComponent(url), {
+            var res = await fetch(proxies[i] + encodeURIComponent(url), {
                 signal: ctrl.signal, referrerPolicy: 'no-referrer'
             });
             clearTimeout(timer);
