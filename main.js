@@ -17,9 +17,9 @@ var blind_total_req = 0
 // 估算模式：单个文件大小（字节），>0 时按“请求数×文件大小”估算流量
 var blind_file_size = 0
 // 公共 CORS 代理已全部移除（实测均不可用/不稳定）。
-// 兼容模式自动探测文件大小只走用户自建代理（cookie 配置，见 index.html 的
-// setSizeProxy；部署代码见仓库 worker.js，Cloudflare Workers 二合一）
-// 或 known_file_size 已知大小，其余情况回退手动输入。
+// 兼容模式自动探测文件大小走与页面同源部署的内置代理
+// （仓库 _worker.js，Cloudflare Pages 二合一），无需用户配置
+// 代理地址；无同源代理时回退手动输入。
 var size_proxies = [];
 // 已知文件大小的链接（字节）：命中则直接采用，跳过自动探测与手动输入
 var known_file_size = {
@@ -140,11 +140,13 @@ function parse_size(s) {
     return Math.floor(num * mult)
 }
 
-// 经自建 CORS 代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
+// 经同源内置代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
 async function probe_file_size(url) {
-    // 只使用用户自建代理（cookie 中配置）；未配置则直接回退手动输入
+    // 代理与页面同源部署时自动可用，无需配置；外加任何预置代理（现为空）。
+    // 凭 X-TK-Proxy 标记头确认对面确实是本项目的代理，避免页面托管在
+    // 无代理的静态空间（如 GitHub Pages）时，把返回的首页大小误判为文件大小。
     var proxies = size_proxies.slice();
-    try { var cp = getCookie('sizeProxy'); if (cp) proxies.unshift(cp); } catch (e) {}
+    if (location.origin && location.origin.indexOf('http') === 0) proxies.unshift(location.origin + '/proxy?url=');
     for (var i = 0; i < proxies.length; i++) {
         const ctrl = new AbortController();
         const timer = setTimeout(function () { ctrl.abort(); }, 8000);
@@ -156,7 +158,7 @@ async function probe_file_size(url) {
             var len = res.headers.get('content-length');
             // 只读响应头，立即取消正文下载；cancel() 的拒绝需要吞掉，否则变成未捕获异常
             try { if (res.body) { res.body.cancel().catch(function () {}); } } catch (e) {}
-            if (res.ok && len) {
+            if (res.ok && len && res.headers.get('x-tk-proxy')) {
                 var n = parseInt(len, 10)
                 if (!isNaN(n) && n > 0) return n
             }

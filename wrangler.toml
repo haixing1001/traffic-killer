@@ -1,8 +1,3 @@
-name = "traffic-killer"
-main = "worker.js"
+name = "traffic-killer-3se"
+pages_build_output_dir = "."
 compatibility_date = "2025-01-01"
-
-# 静态资源：仓库根目录即站点根目录（.assetsignore 排除非站点文件）
-[assets]
-directory = "."
-binding = "ASSETS"
