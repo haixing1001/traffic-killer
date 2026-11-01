@@ -10,38 +10,11 @@ var lsat_all_down = 0
 var refresh_lay = 5000
 
 
-// 兼容模式：链接存在跨域限制、无法用 CORS 读取字节时启用。
-// 此时流量照常传输，但无法统计精确字节数，只能计数完成请求数
-var blindMode = false
-var blind_total_req = 0
-// 估算模式：单个文件大小（字节），>0 时按“请求数×文件大小”估算流量
-var blind_file_size = 0
-// 公共 CORS 代理已全部移除（实测均不可用/不稳定）。
-// 兼容模式自动探测文件大小走与页面同源部署的内置代理
-// （仓库 _worker.js，Cloudflare Pages 二合一），无需用户配置
-// 代理地址；无同源代理时回退手动输入。
-var size_proxies = [];
-// 已知文件大小的链接（字节）：命中则直接采用，跳过自动探测与手动输入
-var known_file_size = {
-    'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824, // 移动云手机
-    'https://gcache.migu.cn/prod/upload/game_resource/small_screen_file/202610/1410/34/media-file-696ca8be0e3748139e6e6f988447644c/yingzhirenling.mp4': 342122425 // 咪咕快游·影之刃零
-};
+// 仅接受可跨域读取（CORS）的链接：读不到字节的链接直接拒绝。
+// 跨域 opaque 响应（no-cors）读不到字节，只能靠请求数估算，
+// 与实际流量偏差大且无法校验，因此不再提供该模式。
 
 async function start_thread(index) {
-    if (blindMode) {
-        // 兼容模式：跨域下响应为 opaque，JS 读不到字节数；
-        // 实测浏览器仍会完整下载响应体，这里循环请求保证流量持续传输
-        while (run) {
-            try {
-                await fetch(testurl, { cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
-                blind_total_req++
-            } catch (err) {
-                console.log(err)
-                await new Promise(function (res) { setTimeout(res, 1500) })
-            }
-        }
-        return
-    }
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
         const reader = response.body.getReader();
@@ -64,23 +37,6 @@ async function start_thread(index) {
     }
 }
 async function cale() {
-    if (blindMode) {
-        // 兼容模式：跨域下无法统计字节，速率显示为未知，流量仍在传输
-        if (visibl) {
-            document.getElementById("speed").innerText = '—';
-            document.getElementById("mbps").innerText = '—';
-        } else {
-            document.title = '流量杀手'
-        }
-        if (run) setTimeout(cale, 1000)
-        else {
-            document.getElementById("speed").innerText = '—';
-            document.getElementById("mbps").innerText = '—';
-            document.getElementById('describe').innerText = blind_label();
-            document.title = '流量杀手'
-        }
-        return
-    }
     var all_down_a = sum(thread_down)
     if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
     if (visibl) document.getElementById("mbps").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 8000, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
@@ -100,21 +56,6 @@ async function cale() {
 }
 
 async function total() {
-    if (blindMode) {
-        // 兼容模式：有文件大小时按“请求数×文件大小”估算流量并标注，否则只计数请求数
-        var est = blind_file_size > 0 ? blind_total_req * blind_file_size : 0
-        if (visibl) document.getElementById("total").innerText = est > 0
-            ? '≈' + show(all_down_sum + est, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）'
-            : '已完成 ' + blind_total_req + ' 次请求';
-        // 估算模式下流量上限按估算字节生效
-        if (est > 0 && Maximum != 0 && (all_down_sum + est) >= Maximum) stop()
-        if (run) setTimeout(total, 16)
-        else if (est > 0) {
-            all_down_sum += est;
-            document.getElementById("total").innerText = '≈' + show(all_down_sum, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）';
-        }
-        return
-    }
     var all_down = sum(thread_down)
     if (visibl) document.getElementById("total").innerText = show((all_down_sum + all_down), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     if ((all_down_sum + all_down) >= Maximum && Maximum != 0) stop()
@@ -123,55 +64,6 @@ async function total() {
         all_down_sum += all_down;
         document.getElementById("total").innerText = show((all_down_sum), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     }
-}
-
-// 解析用户输入的文件大小，如 "100MB"、"1.5GB"、"1024"（字节），非法返回 0
-function parse_size(s) {
-    if (!s) return 0
-    var m = String(s).trim().match(/^([\d.]+)\s*([kmgt]?b?)?$/i)
-    if (!m) return 0
-    var num = parseFloat(m[1])
-    if (isNaN(num) || num <= 0) return 0
-    var u = (m[2] || '').toUpperCase()
-    var mult = 1
-    if (u[0] === 'K') mult = 1024
-    else if (u[0] === 'M') mult = 1048576
-    else if (u[0] === 'G') mult = 1073741824
-    else if (u[0] === 'T') mult = 1099511627776
-    return Math.floor(num * mult)
-}
-
-// 经同源内置代理读取目标文件的 Content-Length（只读响应头，立即取消正文下载）
-async function probe_file_size(url) {
-    // 代理与页面同源部署时自动可用，无需配置；外加任何预置代理（现为空）。
-    // 凭 X-TK-Proxy 标记头确认对面确实是本项目的代理，避免页面托管在
-    // 无代理的静态空间（如 GitHub Pages）时，把返回的首页大小误判为文件大小。
-    var proxies = size_proxies.slice();
-    if (location.origin && location.origin.indexOf('http') === 0) proxies.unshift(location.origin + '/proxy?url=');
-    for (var i = 0; i < proxies.length; i++) {
-        const ctrl = new AbortController();
-        const timer = setTimeout(function () { ctrl.abort(); }, 8000);
-        try {
-            var res = await fetch(proxies[i] + encodeURIComponent(url), {
-                signal: ctrl.signal, referrerPolicy: 'no-referrer'
-            });
-            clearTimeout(timer);
-            var len = res.headers.get('content-length');
-            // 只读响应头，立即取消正文下载；cancel() 的拒绝需要吞掉，否则变成未捕获异常
-            try { if (res.body) { res.body.cancel().catch(function () {}); } } catch (e) {}
-            if (res.ok && len && res.headers.get('x-tk-proxy')) {
-                var n = parseInt(len, 10)
-                if (!isNaN(n) && n > 0) return n
-            }
-        } catch (e) {
-            clearTimeout(timer);
-        }
-    }
-    return 0;
-}
-
-function blind_label() {
-    return blind_file_size > 0 ? '兼容模式（流量估算）' : '兼容模式（跨域）'
 }
 
 async function start() {
@@ -200,9 +92,8 @@ async function start() {
     document.getElementById('do').innerText = '正在检验链接...';
     document.getElementById('do').disabled = true;
 
-    blindMode = false
     var linkOk = false
-    // 第一阶段：CORS 探测，可读到字节则为精确模式
+    // 只接受可跨域读取（CORS）的链接：读不到字节就直接拒绝
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
         const reader = response.body.getReader();
@@ -211,39 +102,15 @@ async function start() {
         reader.cancel()
         linkOk = true
     } catch (err) {
-        console.warn('CORS 探测失败，尝试兼容模式', err)
-    }
-    // 第二阶段：no-cors 探测，跨域限制下仍可传输流量（响应 opaque，无法统计字节）
-    if (!linkOk) {
-        try {
-            await fetch(testurl, { cache: "no-store", mode: 'no-cors', referrerPolicy: 'no-referrer' })
-            blindMode = true
-            linkOk = true
-        } catch (err) {
-            console.warn(err)
-        }
-    }
-    if (blindMode) {
-        blind_file_size = 0
-        // 已知大小的链接直接采用，无需探测与手动输入
-        if (known_file_size[testurl]) {
-            blind_file_size = known_file_size[testurl]
-        } else {
-            // 估算模式：先尝试自动获取文件大小，失败则请用户手动输入
-            try { blind_file_size = await probe_file_size(testurl) } catch (e) {}
-            if (!blind_file_size) {
-                var input = prompt('已进入兼容模式（跨域限制，无法精确统计流量）。\n请输入该文件大小以估算流量（如 100MB、1.5GB），\n留空则只计数完成请求数：', '')
-                blind_file_size = parse_size(input)
-            }
-        }
+        console.warn('CORS 探测失败', err)
     }
     if (!linkOk) {
         document.getElementById('do').innerText = '开始';
         document.getElementById('do').disabled = false;
-        alert("该链接不可用，请检查链接是否正确、网络是否通畅")
+        alert("该链接不支持跨域读取（CORS），无法统计流量，请更换链接")
         return
     }
-    document.getElementById('describe').innerText = blindMode ? blind_label() : '实时速度';
+    document.getElementById('describe').innerText = '实时速度';
     document.getElementById('do').innerText = '停止';
     document.getElementById('do').disabled = false;
     var num = maxtheard
@@ -251,7 +118,6 @@ async function start() {
     start_time = new Date().getTime()
     run = true
     thread_down = []
-    blind_total_req = 0
     while (num--) {
         thread_down[num] = 0
         start_thread(num)
