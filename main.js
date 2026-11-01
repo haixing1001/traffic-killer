@@ -23,7 +23,8 @@ var blind_file_size = 0
 var size_proxies = [];
 // 已知文件大小的链接（字节）：命中则直接采用，跳过自动探测与手动输入
 var known_file_size = {
-    'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824 // 移动云手机
+    'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824, // 移动云手机
+    'https://gcache.migu.cn/prod/upload/game_resource/small_screen_file/202610/1410/34/media-file-696ca8be0e3748139e6e6f988447644c/yingzhirenling.mp4': 342122425 // 咪咕快游·影之刃零
 };
 
 async function start_thread(index) {
