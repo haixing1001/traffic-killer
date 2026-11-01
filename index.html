@@ -3,13 +3,13 @@
 
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>流量杀手</title>
     <meta name="keywords" content="IP查询,IP归属查询,在线测速,网速测试,多地IP查询,流量杀手,流量杀手网页,流量杀手在线,流量消耗器">
     <meta name="description" content="测试您的网速，多地查询您的IP地址，同时具备网络延迟实时检测">
     <meta http-equiv="Cache-Control" content="no-store" />
-    <link rel="stylesheet" href="res/dashlite.css">
-    <link rel="stylesheet" href="res/style.css">
+    <link rel="stylesheet" href="res/dashlite.css?v=1">
+    <link rel="stylesheet" href="res/style.css?v=1">
 	<link rel="shortcut icon" href="images/favicon.ico">
 </head>
 
@@ -59,7 +59,7 @@
                             <div class="nya-title nk-ibx-action-item progress-rating"><em class="icon ni ni-setting"></em><span class="nk-menu-text font-weight-bold">测试设置</span></div>
                             <div class="form-group"><label class="form-label">测试地址</label>
                                 <div class="form-control-wrap">
-                                    <select id='select' onchange="document.getElementById('link').value=this.options[this.selectedIndex].value;setCookie('select',this.selectedIndex,365);" type="text" class="form-control">
+                                    <select id='select' onchange="document.getElementById('link').value=this.options[this.selectedIndex].value;setCookie('select',encodeURIComponent(this.options[this.selectedIndex].value||'diy'),365);" type="text" class="form-control">
                                         <option value="" id="diy">自定义</option>
                                         <option selected="selected" value="https://gcache.migu.cn/prod/upload/game_resource/small_screen_file/202610/1410/34/media-file-696ca8be0e3748139e6e6f988447644c/yingzhirenling.mp4">咪咕快游 影之刃零 342MB [定向]</option>
                                         <option value="https://gcache.migu.cn/prod/upload/game_resource/channel_for_homepage_game2/202610/2910/51/20261029105122602_mgwebp1.webp">咪咕快游 Banner 706KB [定向]</option>
@@ -69,7 +69,7 @@
                                         <option value="https://cachefly.cachefly.net/100mb.test">Cachefly Test [Global]</option>
                                         <option value="https://speed.cloudflare.com/__down?bytes=1073741824">Cloudflare Speed [Global]</option>
                                     </select>
-                                    <input value="" oninput="document.getElementById('select').selectedIndex=0;document.getElementById('diy').value=this.value;setCookie('diy',this.value,365);setCookie('select',0,365);" type="text" id="link" placeholder="请输入下载链接" autocomplete="off" class="form-control">
+                                    <input value="" oninput="document.getElementById('select').selectedIndex=0;document.getElementById('diy').value=this.value;setCookie('diy',this.value,365);setCookie('select','diy',365);" type="text" id="link" placeholder="请输入下载链接" autocomplete="off" class="form-control">
                                 </div>
                             </div>
                             <div class="form-group"><label class="form-label">线程</label>
@@ -118,9 +118,11 @@
                         <div class="card-inner">
                             <div class="nya-title nk-ibx-action-item progress-rating"><em class="icon ni ni-location"></em><span class="nk-menu-text font-weight-bold">出口地址</span></div>
                             <div class="accordion-inner">
-                                <li class="nk-menu-item ">
-                                    <a style="pointer-events:none;" id="ipgb">Loading...</a>
-                                </li>
+                                <ul class="nk-menu" style="list-style:none;padding-left:0;margin:0;">
+                                    <li class="nk-menu-item">
+                                        <a style="cursor:pointer;" id="ipgb" onclick="ipgb()" title="点击重新查询">Loading...</a>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>
@@ -187,9 +189,23 @@
         }
         document.getElementById('diy').value = getCookie("diy");
         var selector = document.getElementById("select");
-        // 节点列表变动后旧 cookie 里的序号可能越界，越界时保持默认选项
-        var savedIndex = parseInt(getCookie("select"), 10);
-        if (savedIndex >= 0 && savedIndex < selector.options.length) selector.selectedIndex = savedIndex;
+        // 节点按 URL 记忆：列表增删或重排都不会错位；兼容旧版存序号的 cookie
+        // 自定义项存成 'diy'，好和“没有 cookie”区分开
+        var savedVal = getCookie("select");
+        try { savedVal = decodeURIComponent(savedVal); } catch (e) {}
+        var savedIdx = -1;
+        if (savedVal === 'diy') {
+            savedIdx = 0;
+        } else if (savedVal) {
+            for (var oi = 0; oi < selector.options.length; oi++) {
+                if (selector.options[oi].value === savedVal) { savedIdx = oi; break; }
+            }
+            if (savedIdx < 0 && /^\d+$/.test(savedVal)) {
+                var n = parseInt(savedVal, 10);
+                if (n >= 0 && n < selector.options.length) savedIdx = n;
+            }
+        }
+        if (savedIdx >= 0) selector.selectedIndex = savedIdx;
         document.getElementById('link').value = selector.options[selector.selectedIndex].value;
 
 
@@ -209,7 +225,7 @@
         }
 
     </script>
-    <script src='main.js?7'></script>
+    <script src='main.js?8'></script>
 </body>
 
 </html>
