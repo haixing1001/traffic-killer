@@ -1,4 +1,4 @@
-var maxThread = 6
+var maxThread = 4
 var testurl
 var lsat_date = 0
 var start_time = 0
