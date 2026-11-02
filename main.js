@@ -11,39 +11,11 @@ var thread_down = []
 var lsat_all_down = 0
 
 
-// 默认走 CORS 精确模式（fetch 能读到字节，逐块累加）。
-// 例外：下面这些域名不返回 CORS 头，只能用 <img> 以 no-cors 方式拉取，
-// 读不到字节，因此按“请求数 × 文件大小”估算——仅对这些域名生效。
-var compatHosts = ['cloud.139.com']
-var compatMode = false
-var compatReq = 0
-var compatSize = 0
-var compatKnownSize = {
-    'https://cloud.139.com/cloudimage/dashboard/202604/2039876149437403136.png': 401824
-}
+// 仅接受可跨域读取（CORS）的链接：读不到字节的链接直接拒绝。
+// 跨域 opaque 响应（no-cors）读不到字节，只能靠请求数估算，
+// 与实际流量偏差大且无法校验，因此不再提供该模式。
 
 async function start_thread(index) {
-    if (compatMode) {
-        // 兼容模式：<img> 不受 CORS 限制，onload/onerror 都代表一次请求结束
-        while (run) {
-            await new Promise(function (resolve) {
-                var img = new Image()
-                var settled = false
-                var finish = function (counted) {
-                    if (settled) return
-                    settled = true
-                    if (counted) compatReq++
-                    resolve()
-                }
-                img.onload = function () { finish(true) }
-                img.onerror = function () { finish(true) }
-                setTimeout(function () { finish(false) }, 30000)   // 30 秒兜底，超时不计入
-                img.src = testurl + (testurl.indexOf('?') >= 0 ? '&' : '?') + 'r=' + Math.random().toString(36).slice(2)
-            })
-            if (!run) break
-        }
-        return
-    }
     try {
         const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer' })
         // 错误页（404/403/5xx）不是有效流量：停止整轮，只提示一次
@@ -75,17 +47,6 @@ async function start_thread(index) {
     }
 }
 async function cale() {
-    if (compatMode) {
-        // 兼容模式读不到字节，速度无法计算
-        document.getElementById("speed").innerText = '—'
-        document.getElementById("mbps").innerText = '—'
-        if (run) setTimeout(cale, 1000)
-        else {
-            document.getElementById('describe').innerText = '兼容模式（估算）'
-            document.title = '流量杀手'
-        }
-        return
-    }
     var all_down_a = sum(thread_down)
     if (visibl) document.getElementById("speed").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 1000, ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s', 'PB/s'], [0, 0, 1, 2, 2, 2]);
     if (visibl) document.getElementById("mbps").innerText = show((all_down_a - lsat_all_down) / (new Date().getTime() - lsat_date) * 8000, ['Bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps'], [0, 0, 0, 2, 2, 2]);
@@ -105,19 +66,6 @@ async function cale() {
 }
 
 async function total() {
-    if (compatMode) {
-        var est = compatSize > 0 ? compatReq * compatSize : 0
-        if (visibl) document.getElementById("total").innerText = compatSize > 0
-            ? '≈' + show(all_down_sum + est, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）'
-            : '已完成 ' + compatReq + ' 次请求'
-        if (compatSize > 0 && Maximum != 0 && (all_down_sum + est) >= Maximum) stop()
-        if (run) setTimeout(total, 200)
-        else if (compatSize > 0) {
-            all_down_sum += est
-            document.getElementById("total").innerText = '≈' + show(all_down_sum, ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]) + '（估算）'
-        }
-        return
-    }
     var all_down = sum(thread_down)
     if (visibl) document.getElementById("total").innerText = show((all_down_sum + all_down), ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], [0, 0, 1, 2, 2, 2]);
     if ((all_down_sum + all_down) >= Maximum && Maximum != 0) stop()
@@ -154,40 +102,25 @@ async function start() {
     document.getElementById('do').innerText = '正在检验链接...';
     document.getElementById('do').disabled = true;
 
-    // 兼容模式只对 compatHosts 里的域名启用；其余仍走 CORS 精确模式
-    var host = ''
-    try { host = new URL(testurl).hostname } catch (e) {}
-    compatMode = compatHosts.indexOf(host) >= 0
-    if (compatMode) {
-        compatReq = 0
-        compatSize = compatKnownSize[testurl] || 0
-        if (!compatSize) {
-            var input = prompt('该域名不支持跨域读取，只能按文件大小估算。\n请输入该文件大小（如 400KB、1.5MB），留空则只统计请求数：', '')
-            compatSize = parseSize(input)
-        }
-    }
-
-    var linkOk = compatMode
+    var linkOk = false
     var linkErr = ''
-    if (!compatMode) {
-        // 只接受可跨域读取（CORS）的链接：读不到字节就直接拒绝
-        var ctrl = new AbortController()
-        var timer = setTimeout(function () { ctrl.abort() }, 8000)
-        try {
-            const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer', signal: ctrl.signal })
-            if (!response.ok) throw new Error('HTTP ' + response.status)
-            const reader = response.body.getReader();
-            const { value, done } = await reader.read();
-            if (!value || value.length <= 0) throw new Error('资源响应异常')
-            reader.cancel()
-            linkOk = true
-        } catch (err) {
-            linkErr = (err && err.name === 'AbortError') ? '连接超时（8 秒无响应）'
-                : (err && err.message ? err.message : String(err))
-            console.warn('CORS 探测失败', err)
-        } finally {
-            clearTimeout(timer)
-        }
+    // 只接受可跨域读取（CORS）的链接：读不到字节就直接拒绝
+    var ctrl = new AbortController()
+    var timer = setTimeout(function () { ctrl.abort() }, 8000)
+    try {
+        const response = await fetch(testurl, { cache: "no-store", mode: 'cors', referrerPolicy: 'no-referrer', signal: ctrl.signal })
+        if (!response.ok) throw new Error('HTTP ' + response.status)
+        const reader = response.body.getReader();
+        const { value, done } = await reader.read();
+        if (!value || value.length <= 0) throw new Error('资源响应异常')
+        reader.cancel()
+        linkOk = true
+    } catch (err) {
+        linkErr = (err && err.name === 'AbortError') ? '连接超时（8 秒无响应）'
+            : (err && err.message ? err.message : String(err))
+        console.warn('CORS 探测失败', err)
+    } finally {
+        clearTimeout(timer)
     }
     if (!linkOk) {
         document.getElementById('do').innerText = '开始';
@@ -195,7 +128,7 @@ async function start() {
         alert("链接不可用：" + linkErr + "\n目标需支持跨域读取（CORS）")
         return
     }
-    document.getElementById('describe').innerText = compatMode ? '兼容模式（估算）' : '实时速度';
+    document.getElementById('describe').innerText = '实时速度';
     document.getElementById('do').innerText = '停止';
     document.getElementById('do').disabled = false;
     var num = maxThread
@@ -244,22 +177,6 @@ function checkURL(u) {
     } catch (e) {
         return false;
     }
-}
-
-// 解析用户输入的文件大小，如 "100MB"、"1.5GB"、"1024"（字节），非法返回 0
-function parseSize(s) {
-    if (!s) return 0
-    var m = String(s).trim().match(/^([\d.]+)\s*([kmgt]?b?)?$/i)
-    if (!m) return 0
-    var num = parseFloat(m[1])
-    if (isNaN(num) || num <= 0) return 0
-    var u = (m[2] || '').toUpperCase()
-    var mult = 1
-    if (u[0] === 'K') mult = 1024
-    else if (u[0] === 'M') mult = 1048576
-    else if (u[0] === 'G') mult = 1073741824
-    else if (u[0] === 'T') mult = 1099511627776
-    return Math.floor(num * mult)
 }
 
 var gbip = ""
